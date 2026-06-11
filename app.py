@@ -127,10 +127,10 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             caixa_logs.code(texto_logs)
             lista_ranking.append({'nome': nome, 'pontos': points_totais if 'points_totais' in locals() else pontos_totais})
             
-        wb_leitura.close()
+                wb_leitura.close()
         
-        # Ordenação do ranking
-        lista_ranking.sort(key=lambda x: x['pontos'], reverse=True)
+        # Ordenação do ranking: 1º por pontos (decrescente), 2º por nome (ordem alfabética)
+        lista_ranking.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
         
         # Abrir o arquivo de controle original preservando fórmulas para gerar a saída
         bytes_controle.seek(0)
@@ -150,37 +150,33 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
         
         st.subheader("🏆 Classificação Atualizada:")
         
+        # Variáveis de controle para gerenciar os empates
+        posicao_atual = 1
+        pontos_anteriores = None
+        
         for idx, participante in enumerate(lista_ranking):
             linha_atual = 2 + idx
+            
+            # Se a pontuação for diferente do participante anterior, a posição atualiza para o índice real + 1
+            if participante['pontos'] != pontos_anteriores:
+                posicao_atual = idx + 1
+                
+            pontos_anteriores = participante['pontos']
+            
             ws_tabela_gravar[f'A{linha_atual}'].value = participante['nome']
             ws_tabela_gravar[f'B{linha_atual}'].value = participante['pontos']
-            ws_tabela_gravar[f'C{linha_atual}'].value = f"{idx+1}º Lugar"
+            ws_tabela_gravar[f'C{linha_atual}'].value = f"{posicao_atual}º Lugar"
             
-            if idx == 0: emoji = "🥇 "
-            elif idx == 1: emoji = "🥈 "
-            elif idx == 2: emoji = "🥉 "
+            # Distribuição dos emojis com base na posição compartilhada
+            if posicao_atual == 1: emoji = "🥇 "
+            elif posicao_atual == 2: emoji = "🥈 "
+            elif posicao_atual == 3: emoji = "🥉 "
             else: emoji = "  "
                 
-            st.text(f"{emoji}{idx+1}º Lugar: {participante['nome'].ljust(16)} | Pontos: {participante['pontos']}")
+            st.text(f"{emoji}{posicao_atual}º Lugar: {participante['nome'].ljust(16)} | Pontos: {participante['pontos']}")
             
         # Salvar o arquivo de resultados em memória temporária
         arquivo_saida_bytes = io.BytesIO()
         wb_gravar.save(arquivo_saida_bytes)
-        arquivo_saida_bytes.seek(0)
-        wb_gravar.close()
+
         
-        # Enviar o arquivo pronto de volta para o Google Drive
-        nome_saida = 'BOLÃO DA COPA DO MUNDO 2026 (THE).xlsx'
-        mimetype_excel = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        media_upload = MediaIoBaseUpload(arquivo_saida_bytes, mimetype=mimetype_excel, resumable=True)
-        
-        if nome_saida in mapa_arquivos:
-            service.files().update(fileId=mapa_arquivos[nome_saida], media_body=media_upload).execute()
-        else:
-            metadados = {'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}
-            service.files().create(body=metadados, media_body=media_upload).execute()
-            
-        st.success(f"Planilha '{nome_saida}' atualizada com sucesso no seu Google Drive!")
-        
-    except Exception as e:
-        st.error(f"Ocorreu um erro no processamento: {e}")
