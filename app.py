@@ -127,7 +127,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             caixa_logs.code(texto_logs)
             lista_ranking.append({'nome': nome, 'pontos': points_totais if 'points_totais' in locals() else pontos_totais})
             
-                wb_leitura.close()
+        wb_leitura.close()
         
         # Ordenação do ranking: 1º por pontos (decrescente), 2º por nome (ordem alfabética)
         lista_ranking.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
