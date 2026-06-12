@@ -196,3 +196,102 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
         
     except Exception as e:
         st.error(f"Ocorreu um erro no processamento: {e}")
+# ==============================================================================
+# SESSÃO 2: ESPIAR PALPITES DO DIA
+# ==============================================================================
+st.divider()
+st.subheader("👀 Espiar Palpites da Rodada")
+
+# Ajustando o fuso horário (UTC -3) para pegar o dia exato no Brasil
+from datetime import datetime, timezone, timedelta
+fuso_br = timezone(timedelta(hours=-3))
+hoje = datetime.now(fuso_br)
+
+# Cria a string no formato "DD/M" (ex: 12/6) sem zeros à esquerda
+data_padrao = f"{hoje.day}/{hoje.month}"
+
+# Interface: Caixa de texto que já vem preenchida com a data de hoje
+data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Formato DD/M):", value=data_padrao)
+
+if st.button("🔍 Ver Palpites do Dia", type="secondary"):
+    try:
+        service = obter_serviço_drive()
+        
+        # Puxa a lista de arquivos da pasta
+        query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
+        resultados = service.files().list(q=query, fields="files(id, name)").execute()
+        mapa_arquivos = {arq['name']: arq['id'] for arq in resultados.get('files', [])}
+        
+        if 'Arquivo_de_controle.xlsx' not in mapa_arquivos:
+            st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado na pasta do Drive.")
+            st.stop()
+            
+        # 1. Baixar o arquivo de controle para descobrir quem são os participantes
+        id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
+        req_c = service.files().get_media(fileId=id_controle)
+        bytes_c = io.BytesIO()
+        baix_c = MediaIoBaseDownload(bytes_c, req_c)
+        concluido = False
+        while not concluido:
+            _, concluido = baix_c.next_chunk()
+            
+        bytes_c.seek(0)
+        wb_leitura = openpyxl.load_workbook(bytes_c, data_only=True)
+        ws_tabela = wb_leitura['TABELA']
+        
+        participantes = []
+        for r in range(2, 101):
+            nome = ws_tabela[f'A{r}'].value
+            if nome and str(nome).strip() != "" and str(nome).strip().lower() != "participante":
+                participantes.append(str(nome).strip())
+        wb_leitura.close()
+        
+        st.write(f"**Buscando os palpites de todos para os jogos do dia: {data_pesquisa}...**")
+        
+        # 2. Varre o arquivo de cada participante buscando os jogos daquela data
+        for nome in participantes:
+            arq_palpite = f"{nome}.xlsx"
+            if arq_palpite in mapa_arquivos:
+                id_p = mapa_arquivos[arq_palpite]
+                req_p = service.files().get_media(fileId=id_p)
+                bytes_p = io.BytesIO()
+                baix_p = MediaIoBaseDownload(bytes_p, req_p)
+                conc_p = False
+                while not conc_p:
+                    _, conc_p = baix_p.next_chunk()
+                
+                bytes_p.seek(0)
+                wb_p = openpyxl.load_workbook(bytes_p, data_only=True)
+                ws_p = wb_p['FASE 1']
+                
+                palpites_do_dia = []
+                # Varre as linhas dos jogos (3 a 74)
+                for r in range(3, 75):
+                    # Pega a data na coluna E
+                    data_jogo = str(ws_p[f'E{r}'].value).strip()
+                    
+                    if data_jogo == data_pesquisa:
+                        # ===== ATENÇÃO PARA AS COLUNAS DOS NOMES DOS TIMES =====
+                        # Assumi Coluna F para Time da Casa e Coluna J para Time de Fora
+                        # Se as suas forem diferentes, basta trocar as letras abaixo!
+                        time_casa = str(ws_p[f'F{r}'].value).strip()
+                        gols_casa = ws_p[f'G{r}'].value
+                        gols_fora = ws_p[f'I{r}'].value
+                        time_fora = str(ws_p[f'J{r}'].value).strip()
+                        
+                        # Tratamento para não exibir "None" se o cara esqueceu de preencher
+                        g_casa_str = gols_casa if gols_casa is not None else "-"
+                        g_fora_str = gols_fora if gols_fora is not None else "-"
+                        
+                        palpites_do_dia.append(f"⚽ {time_casa} **{g_casa_str} x {g_fora_str}** {time_fora}")
+                
+                wb_p.close()
+                
+                # Exibe uma "caixinha sanfona" expansível para cada pessoa com os palpites dela dentro
+                if palpites_do_dia:
+                    with st.expander(f"👤 Palpites de {nome}"):
+                        for p in palpites_do_dia:
+                            st.markdown(p)
+                            
+    except Exception as e:
+        st.error(f"Ocorreu um erro na busca: {e}")
