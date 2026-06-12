@@ -44,7 +44,7 @@ def calcular_pontos(g_m_real, g_v_real, g_m_palpite, g_v_palpite):
 
 # Configuração visual da página Web
 st.set_page_config(page_title="Bolão Copa 2026 (THE)", page_icon="⚽", layout="centered")
-st.title("🏆 Apuração do Bolão da Copa 2026 (THE)")
+st.title("🏆 Apuração do Bolão da Copa 2026 (THE) - V2")
 st.write("Clique no botão abaixo para processar os palpites e atualizar o ranking em tempo real.")
 
 if st.button("🚀 Atualizar Classificação", type="primary"):
