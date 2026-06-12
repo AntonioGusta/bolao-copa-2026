@@ -215,7 +215,7 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
     try:
         service = obter_serviço_drive()
         
-        # Tratamento da pesquisa para garantir que "12/06" vire "12/6"
+        # Tratamento da pesquisa
         pesq = data_pesquisa.strip()
         if "/" in pesq:
             try:
@@ -271,10 +271,8 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
                 
                 palpites_do_dia = []
                 
-                # =======================================================
-                # AJUSTE A LETRA DA COLUNA AQUI SE NECESSÁRIO!
-                COLUNA_DATA = 'C'  # Se a data estiver na C, mude para 'C'
-                # =======================================================
+                # Certifique-se de que a letra abaixo é onde estão as DATAS na sua planilha
+                COLUNA_DATA = 'D'  
                 
                 for r in range(3, 75):
                     val_data = ws_p[f'{COLUNA_DATA}{r}'].value
@@ -298,8 +296,17 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
                         gols_fora = ws_p[f'I{r}'].value
                         time_fora = str(ws_p[f'J{r}'].value).strip()
                         
-                        g_casa_str = gols_casa if gols_casa is not None else "-"
-                        g_fora_str = gols_fora if gols_fora is not None else "-"
+                        # === O TRUQUE PARA TIRAR AS CASAS DECIMAIS ===
+                        # Converte para float primeiro (para absorver os .0) e depois crava como int
+                        try:
+                            g_casa_str = str(int(float(gols_casa))) if gols_casa is not None and str(gols_casa).strip() != "" else "-"
+                        except ValueError:
+                            g_casa_str = "-"
+                            
+                        try:
+                            g_fora_str = str(int(float(gols_fora))) if gols_fora is not None and str(gols_fora).strip() != "" else "-"
+                        except ValueError:
+                            g_fora_str = "-"
                         
                         palpites_do_dia.append(f"⚽ {time_casa} **{g_casa_str} x {g_fora_str}** {time_fora}")
                 
