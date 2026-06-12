@@ -272,7 +272,7 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
                 palpites_do_dia = []
                 
                 # Certifique-se de que a letra abaixo é onde estão as DATAS na sua planilha
-                COLUNA_DATA = 'D'  
+                COLUNA_DATA = 'C'  
                 
                 for r in range(3, 75):
                     val_data = ws_p[f'{COLUNA_DATA}{r}'].value
