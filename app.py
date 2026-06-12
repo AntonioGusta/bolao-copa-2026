@@ -197,7 +197,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
     except Exception as e:
         st.error(f"Ocorreu um erro no processamento: {e}")
 # ==============================================================================
-# SESSÃO 2: ESPIAR PALPITES DO DIA (MODO DETETIVE)
+# SESSÃO 2: ESPIAR PALPITES DO DIA
 # ==============================================================================
 st.divider()
 st.subheader("👀 Espiar Palpites da Rodada")
@@ -206,13 +206,16 @@ import datetime as dt
 fuso_br = dt.timezone(dt.timedelta(hours=-3))
 hoje = dt.datetime.now(fuso_br)
 
+# Cria a string no formato "D/M" sem zeros à esquerda
 data_padrao = f"{hoje.day}/{hoje.month}"
+
 data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Ex: 12/6):", value=data_padrao)
 
 if st.button("🔍 Ver Palpites do Dia", type="secondary"):
     try:
         service = obter_serviço_drive()
         
+        # Tratamento da pesquisa para garantir que "12/06" vire "12/6"
         pesq = data_pesquisa.strip()
         if "/" in pesq:
             try:
@@ -226,11 +229,11 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
         resultados = service.files().list(q=query, fields="files(id, name)").execute()
         mapa_arquivos = {arq['name']: arq['id'] for arq in resultados.get('files', [])}
         
-        id_controle = mapa_arquivos.get('Arquivo_de_controle.xlsx')
-        if not id_controle:
+        if 'Arquivo_de_controle.xlsx' not in mapa_arquivos:
             st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado.")
             st.stop()
             
+        id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
         req_c = service.files().get_media(fileId=id_controle)
         bytes_c = io.BytesIO()
         baix_c = MediaIoBaseDownload(bytes_c, req_c)
@@ -249,10 +252,9 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
                 participantes.append(str(nome).strip())
         wb_leitura.close()
         
-        st.write(f"**Buscando os palpites para o dia: {pesq_limpa}...**")
-        st.info(f"👥 Achei {len(participantes)} participantes na tabela principal.")
+        st.write(f"**Buscando os palpites de todos para os jogos do dia: {pesq_limpa}...**")
         
-        for idx, nome in enumerate(participantes):
+        for nome in participantes:
             arq_palpite = f"{nome}.xlsx"
             if arq_palpite in mapa_arquivos:
                 id_p = mapa_arquivos[arq_palpite]
@@ -267,18 +269,15 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
                 wb_p = openpyxl.load_workbook(bytes_p, data_only=True)
                 ws_p = wb_p['FASE 1']
                 
-                # ===== RAIO-X DETETIVE (SÓ PARA A PRIMEIRA PESSOA) =====
-                if idx == 0:
-                    st.warning(f"🕵️ **RAIO-X: Lendo a planilha de '{nome}'...**")
-                    for r_teste in range(3, 8):
-                        val_e = ws_p[f'E{r_teste}'].value
-                        val_f = ws_p[f'F{r_teste}'].value
-                        st.code(f"Linha {r_teste} | Coluna E (Data): {val_e} | Coluna F (Time Casa): {val_f}")
-                # ========================================================
-                
                 palpites_do_dia = []
+                
+                # =======================================================
+                # AJUSTE A LETRA DA COLUNA AQUI SE NECESSÁRIO!
+                COLUNA_DATA = 'C'  # Se a data estiver na C, mude para 'C'
+                # =======================================================
+                
                 for r in range(3, 75):
-                    val_data = ws_p[f'E{r}'].value
+                    val_data = ws_p[f'{COLUNA_DATA}{r}'].value
                     if val_data is None: continue
                     
                     if isinstance(val_data, dt.datetime):
