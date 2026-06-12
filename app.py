@@ -202,31 +202,37 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
 st.divider()
 st.subheader("👀 Espiar Palpites da Rodada")
 
-# Ajustando o fuso horário (UTC -3) para pegar o dia exato no Brasil
-from datetime import datetime, timezone, timedelta
-fuso_br = timezone(timedelta(hours=-3))
-hoje = datetime.now(fuso_br)
+import datetime as dt
+fuso_br = dt.timezone(dt.timedelta(hours=-3))
+hoje = dt.datetime.now(fuso_br)
 
-# Cria a string no formato "DD/M" (ex: 12/6) sem zeros à esquerda
+# Cria a string no formato "D/M" sem zeros à esquerda
 data_padrao = f"{hoje.day}/{hoje.month}"
 
-# Interface: Caixa de texto que já vem preenchida com a data de hoje
-data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Formato DD/M):", value=data_padrao)
+data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Ex: 12/6):", value=data_padrao)
 
 if st.button("🔍 Ver Palpites do Dia", type="secondary"):
     try:
         service = obter_serviço_drive()
         
-        # Puxa a lista de arquivos da pasta
+        # Tratamento da pesquisa para garantir que "12/06" vire "12/6"
+        pesq = data_pesquisa.strip()
+        if "/" in pesq:
+            try:
+                pesq_limpa = f"{int(pesq.split('/')[0])}/{int(pesq.split('/')[1])}"
+            except:
+                pesq_limpa = pesq
+        else:
+            pesq_limpa = pesq
+
         query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
         resultados = service.files().list(q=query, fields="files(id, name)").execute()
         mapa_arquivos = {arq['name']: arq['id'] for arq in resultados.get('files', [])}
         
         if 'Arquivo_de_controle.xlsx' not in mapa_arquivos:
-            st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado na pasta do Drive.")
+            st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado.")
             st.stop()
             
-        # 1. Baixar o arquivo de controle para descobrir quem são os participantes
         id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
         req_c = service.files().get_media(fileId=id_controle)
         bytes_c = io.BytesIO()
@@ -246,9 +252,8 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
                 participantes.append(str(nome).strip())
         wb_leitura.close()
         
-        st.write(f"**Buscando os palpites de todos para os jogos do dia: {data_pesquisa}...**")
+        st.write(f"**Buscando os palpites de todos para os jogos do dia: {pesq_limpa}...**")
         
-        # 2. Varre o arquivo de cada participante buscando os jogos daquela data
         for nome in participantes:
             arq_palpite = f"{nome}.xlsx"
             if arq_palpite in mapa_arquivos:
@@ -265,21 +270,29 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
                 ws_p = wb_p['FASE 1']
                 
                 palpites_do_dia = []
-                # Varre as linhas dos jogos (3 a 74)
                 for r in range(3, 75):
-                    # Pega a data na coluna E
-                    data_jogo = str(ws_p[f'E{r}'].value).strip()
+                    val_data = ws_p[f'E{r}'].value
+                    if val_data is None: continue
                     
-                    if data_jogo == data_pesquisa:
-                        # ===== ATENÇÃO PARA AS COLUNAS DOS NOMES DOS TIMES =====
-                        # Assumi Coluna F para Time da Casa e Coluna J para Time de Fora
-                        # Se as suas forem diferentes, basta trocar as letras abaixo!
+                    # === O TRUQUE DE MESTRE: CONVERTER DATAS DO EXCEL ===
+                    if isinstance(val_data, dt.datetime):
+                        data_jogo = f"{val_data.day}/{val_data.month}"
+                    else:
+                        txt = str(val_data).strip()
+                        if "/" in txt:
+                            try:
+                                data_jogo = f"{int(txt.split('/')[0])}/{int(txt.split('/')[1])}"
+                            except:
+                                data_jogo = txt
+                        else:
+                            data_jogo = txt
+                    
+                    if data_jogo == pesq_limpa:
                         time_casa = str(ws_p[f'F{r}'].value).strip()
                         gols_casa = ws_p[f'G{r}'].value
                         gols_fora = ws_p[f'I{r}'].value
                         time_fora = str(ws_p[f'J{r}'].value).strip()
                         
-                        # Tratamento para não exibir "None" se o cara esqueceu de preencher
                         g_casa_str = gols_casa if gols_casa is not None else "-"
                         g_fora_str = gols_fora if gols_fora is not None else "-"
                         
@@ -287,7 +300,6 @@ if st.button("🔍 Ver Palpites do Dia", type="secondary"):
                 
                 wb_p.close()
                 
-                # Exibe uma "caixinha sanfona" expansível para cada pessoa com os palpites dela dentro
                 if palpites_do_dia:
                     with st.expander(f"👤 Palpites de {nome}"):
                         for p in palpites_do_dia:
