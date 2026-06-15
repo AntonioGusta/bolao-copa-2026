@@ -42,23 +42,29 @@ def calcular_pontos(g_m_real, g_v_real, g_m_palpite, g_v_palpite):
     return 2
 
 def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posicoes_destaque=None):
-    """Gera um bloco HTML contínuo para evitar bugs de Markdown no Streamlit."""
+    """Gera um bloco HTML contínuo com Dark Theme de alto contraste e legibilidade."""
     if posicoes_destaque is None:
         posicoes_destaque = []
         
-    html = f"<div style='text-align: center; margin-bottom: 20px; font-family: sans-serif;'>"
-    html += f"<h4 style='margin-bottom: 0px; color: #1f1f1f;'>{titulo}</h4>"
-    html += f"<p style='margin-top: 0px; font-size: 14px; font-style: italic; color: #555;'>{subtitulo}</p>"
-    html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 14px;'>"
-    html += "<thead style='background-color: #f0f2f6; border-bottom: 2px solid #ccc;'>"
+    # Container do Card com Sombra e Fundo Slate Escuro
+    html = f"<div style='background: #0F172A; padding: 15px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.35); text-align: center; margin-bottom: 20px; font-family: sans-serif;'>"
+    html += f"<h4 style='margin-bottom: 0px; color: #F8FAFC;'>{titulo}</h4>"
+    html += f"<p style='margin-top: 0px; font-size: 14px; font-style: italic; color: #CBD5E1;'>{subtitulo}</p>"
+    
+    # Tabela com fundo base escuro
+    html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; color: #F8FAFC; margin-top: 15px;'>"
+    html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
     html += "<tr><th style='padding: 8px;'>Pos</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px;'>Pts</th></tr>"
     html += "</thead><tbody>"
 
     for p in participantes:
         pos_str = p['posicao'].replace("º Lugar", "").strip()
-        bg_color = cor_destaque if (pos_str.isdigit() and int(pos_str) in posicoes_destaque) else "transparent"
+        is_highlight = (pos_str.isdigit() and int(pos_str) in posicoes_destaque)
         
-        html += f"<tr style='background-color: {bg_color}; border-bottom: 1px solid #eee;'>"
+        # Define a cor de fundo da linha
+        bg_color = cor_destaque if is_highlight else "#1E293B"
+        
+        html += f"<tr style='background-color: {bg_color}; border-bottom: 1px solid #334155;'>"
         html += f"<td style='padding: 6px; font-weight: bold;'>{p['posicao'].replace(' Lugar', '')}</td>"
         html += f"<td style='text-align: left; padding: 6px;'>{p['nome']}</td>"
         html += f"<td style='padding: 6px; font-weight: bold;'>{p['pontos']}</td>"
@@ -75,7 +81,7 @@ st.set_page_config(page_title="Bolão Copa 2026 (THE)", page_icon="⚽", layout=
 if 'ranking_processado' not in st.session_state:
     st.session_state.ranking_processado = []
 
-st.title("🏆 Apuração do Bolão da Copa 2026 (THE) - V3")
+st.title("🏆 Apuração do Bolão da Copa 2026 (THE) - V2")
 st.write("Clique no botão abaixo para processar os palpites no Drive e atualizar o ranking em tempo real.")
 
 # Botão principal processa os dados e salva na memória
@@ -186,8 +192,13 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             else:
                 metadados = {'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}
                 service.files().create(body=metadados, media_body=media_upload).execute()
-                
-            st.success("Tabela atualizada com sucesso!")
+            
+            # Alerta de Sucesso Customizado (Substitui o st.success padrão)
+            st.markdown("""
+            <div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px; font-family: sans-serif;'>
+                <strong>Tabela atualizada com sucesso no Google Drive!</strong>
+            </div>
+            """, unsafe_allow_html=True)
             
         except Exception as e:
             st.error(f"Ocorreu um erro no processamento: {e}")
@@ -199,7 +210,7 @@ st.divider()
 # ==============================================================================
 aba_ranking, aba_palpites = st.tabs(["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada"])
 
-# --- ABA 1: RANKING ESTILIZADO ---
+# --- ABA 1: RANKING ESTILIZADO (DARK THEME) ---
 with aba_ranking:
     if not st.session_state.ranking_processado:
         st.info("👆 Clique no botão azul lá em cima para buscar os dados no Google Drive e gerar a classificação atualizada.")
@@ -209,7 +220,6 @@ with aba_ranking:
         # Fatiamento das categorias
         profissionais = dados[:5]
         amadores = dados[5:15]
-        # Peladeiros engloba todo o resto, exceto os últimos 3
         peladeiros = dados[15:-3] 
         lanterna = dados[-3:]
         
@@ -219,7 +229,7 @@ with aba_ranking:
             html_prof = gerar_tabela_html(
                 profissionais, 
                 "Profissionais", "- Elite do Pitaco -", 
-                cor_destaque="#c8e6c9", # Verde claro
+                cor_destaque="#166534", # Verde Profundo
                 posicoes_destaque=[1, 2, 3, 4, 5]
             )
             st.markdown(html_prof, unsafe_allow_html=True)
@@ -245,7 +255,7 @@ with aba_ranking:
             html_lanterna = gerar_tabela_html(
                 lanterna, 
                 "Prêmio Espírito Coletivo", "- Bastava Apostar ao Contrário -",
-                cor_destaque="#ffcdd2", # Vermelho claro
+                cor_destaque="#991B1B", # Vermelho Profundo
                 posicoes_destaque=posicoes_lanterna
             )
             st.markdown(html_lanterna, unsafe_allow_html=True)
