@@ -46,12 +46,10 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     if posicoes_destaque is None:
         posicoes_destaque = []
         
-    # Container do Card com Sombra e Fundo Slate Escuro
     html = f"<div style='background: #0F172A; padding: 15px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.35); text-align: center; margin-bottom: 20px; font-family: sans-serif;'>"
     html += f"<h4 style='margin-bottom: 0px; color: #F8FAFC;'>{titulo}</h4>"
     html += f"<p style='margin-top: 0px; font-size: 14px; font-style: italic; color: #CBD5E1;'>{subtitulo}</p>"
     
-    # Tabela com fundo base escuro
     html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
     html += "<tr><th style='padding: 8px;'>Pos</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px;'>Pts</th></tr>"
@@ -61,7 +59,6 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
         pos_str = p['posicao'].replace("º Lugar", "").strip()
         is_highlight = (pos_str.isdigit() and int(pos_str) in posicoes_destaque)
         
-        # Define a cor de fundo da linha
         bg_color = cor_destaque if is_highlight else "#1E293B"
         
         html += f"<tr style='background-color: {bg_color}; border-bottom: 1px solid #334155;'>"
@@ -84,7 +81,6 @@ if 'ranking_processado' not in st.session_state:
 st.title("🏆 Apuração do Bolão da Copa 2026 (THE) - V2")
 st.write("Clique no botão abaixo para processar os palpites no Drive e atualizar o ranking em tempo real.")
 
-# Botão principal processa os dados e salva na memória
 if st.button("🚀 Atualizar Classificação", type="primary"):
     with st.spinner("Lendo planilhas no Google Drive... Isso pode levar alguns segundos."):
         try:
@@ -193,7 +189,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 metadados = {'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}
                 service.files().create(body=metadados, media_body=media_upload).execute()
             
-            # Alerta de Sucesso Customizado (Substitui o st.success padrão)
             st.markdown("""
             <div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px; font-family: sans-serif;'>
                 <strong>Tabela atualizada com sucesso no Google Drive!</strong>
@@ -210,55 +205,78 @@ st.divider()
 # ==============================================================================
 aba_ranking, aba_palpites = st.tabs(["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada"])
 
-# --- ABA 1: RANKING ESTILIZADO (DARK THEME) ---
+# --- ABA 1: RANKING ESTILIZADO (DARK THEME + FATIAMENTO DINÂMICO) ---
 with aba_ranking:
     if not st.session_state.ranking_processado:
         st.info("👆 Clique no botão azul lá em cima para buscar os dados no Google Drive e gerar a classificação atualizada.")
     else:
         dados = st.session_state.ranking_processado
+        N = len(dados)
         
-        # Fatiamento das categorias
-        profissionais = dados[:5]
-        amadores = dados[5:15]
-        peladeiros = dados[15:-3] 
-        lanterna = dados[-3:]
+        # 1. Lógica Profissionais (Mínimo 5, expande se houver empate no limite)
+        idx_prof = 5 if N >= 5 else N
+        while idx_prof < N and dados[idx_prof]['pontos'] == dados[idx_prof - 1]['pontos']:
+            idx_prof += 1
+            
+        # 2. Lógica Lanterna (Mínimo 3, expande para trás se houver empate no limite)
+        # O 'max' garante que a lanterna não engula os profissionais se todo mundo empatar
+        idx_lant = max(N - 3, idx_prof) 
+        while idx_lant > idx_prof and dados[idx_lant - 1]['pontos'] == dados[idx_lant]['pontos']:
+            idx_lant -= 1
+            
+        # 3. Lógica Amadores (Tenta pegar os próximos 10, expande se empatar)
+        alvo_amad = idx_prof + 10
+        # O 'min' garante que os amadores não invadam a zona da lanterna
+        idx_amad = min(alvo_amad, idx_lant) 
+        while idx_amad < idx_lant and dados[idx_amad]['pontos'] == dados[idx_amad - 1]['pontos']:
+            idx_amad += 1
+            
+        # Aplica as fatias perfeitamente cortadas
+        profissionais = dados[:idx_prof]
+        amadores = dados[idx_prof:idx_amad]
+        peladeiros = dados[idx_amad:idx_lant] 
+        lanterna = dados[idx_lant:]
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            html_prof = gerar_tabela_html(
-                profissionais, 
-                "Profissionais", "- Elite do Pitaco -", 
-                cor_destaque="#166534", # Verde Profundo
-                posicoes_destaque=[1, 2, 3, 4, 5]
-            )
-            st.markdown(html_prof, unsafe_allow_html=True)
+            if profissionais:
+                html_prof = gerar_tabela_html(
+                    profissionais, 
+                    "Profissionais", "- Elite do Pitaco -", 
+                    cor_destaque="#166534", 
+                    posicoes_destaque=[1, 2, 3, 4, 5]
+                )
+                st.markdown(html_prof, unsafe_allow_html=True)
             
         with col2:
-            html_amadores = gerar_tabela_html(
-                amadores, 
-                "Amadores", "- Os que ainda sonham -"
-            )
-            st.markdown(html_amadores, unsafe_allow_html=True)
+            if amadores:
+                html_amadores = gerar_tabela_html(
+                    amadores, 
+                    "Amadores", "- Os que ainda sonham -"
+                )
+                st.markdown(html_amadores, unsafe_allow_html=True)
             
         with col3:
-            html_peladeiros = gerar_tabela_html(
-                peladeiros, 
-                "Peladeiros", "- Especialistas em Errar -"
-            )
-            st.markdown(html_peladeiros, unsafe_allow_html=True)
+            if peladeiros:
+                html_peladeiros = gerar_tabela_html(
+                    peladeiros, 
+                    "Peladeiros", "- Especialistas em Errar -"
+                )
+                st.markdown(html_peladeiros, unsafe_allow_html=True)
             
         st.write("---")
         col_vazia1, col_lanterna, col_vazia2 = st.columns([1, 2, 1])
         with col_lanterna:
-            posicoes_lanterna = [int(p['posicao'].replace("º Lugar", "").strip()) for p in lanterna]
-            html_lanterna = gerar_tabela_html(
-                lanterna, 
-                "Prêmio Espírito Coletivo", "- Bastava Apostar ao Contrário -",
-                cor_destaque="#991B1B", # Vermelho Profundo
-                posicoes_destaque=posicoes_lanterna
-            )
-            st.markdown(html_lanterna, unsafe_allow_html=True)
+            if lanterna:
+                posicoes_lanterna = [int(p['posicao'].replace("º Lugar", "").strip()) for p in lanterna]
+                html_lanterna = gerar_tabela_html(
+                    lanterna, 
+                    "Prêmio Espírito Coletivo", "- Bastava Apostar ao Contrário -",
+                    cor_destaque="#991B1B", 
+                    posicoes_destaque=posicoes_lanterna
+                )
+                st.markdown(html_lanterna, unsafe_allow_html=True)
 
 # --- ABA 2: PALPITES DO DIA ---
 with aba_palpites:
