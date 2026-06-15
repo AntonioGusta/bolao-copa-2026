@@ -26,13 +26,8 @@ def obter_serviço_drive():
         creds.refresh(Request())
     return build('drive', 'v3', credentials=creds)
 
-# --- O SEGREDO DA VELOCIDADE: CACHE DE 24 HORAS PARA OS PALPITES ---
 @st.cache_data(ttl=dt.timedelta(hours=24), show_spinner=False)
 def carregar_palpites_em_cache(file_id):
-    """
-    Esta função baixa a planilha do participante UMA VEZ por dia e guarda 
-    os palpites na memória RAM do servidor do Streamlit.
-    """
     service = obter_serviço_drive()
     req = service.files().get_media(fileId=file_id)
     bytes_io = io.BytesIO()
@@ -47,7 +42,6 @@ def carregar_palpites_em_cache(file_id):
         palpites[r] = (ws[f'G{r}'].value, ws[f'I{r}'].value)
     wb.close()
     return palpites
-# -------------------------------------------------------------------
 
 def calcular_pontos(g_m_real, g_v_real, g_m_palpite, g_v_palpite):
     if g_m_real is None or g_v_real is None or g_m_palpite is None or g_v_palpite is None: return 0
@@ -103,7 +97,7 @@ st.title("🏆 Apuração do Bolão da Copa 2026 (THE) - V2")
 st.write("Clique no botão abaixo para processar os palpites e atualizar o ranking em tempo real.")
 
 if st.button("🚀 Atualizar Classificação", type="primary"):
-    with st.spinner("Sincronizando com o Drive..."):
+    with st.spinner("Sincronizando com o Drive... (Isso será muito rápido graças ao Cache!)"):
         try:
             service = obter_serviço_drive()
             query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
@@ -114,10 +108,12 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado na pasta do Drive.")
                 st.stop()
                 
-            # --- LER HISTÓRICO JSON ---
+            # ==================================================================
+            # 1. LER O NOVO BANCO DE DADOS DE HISTÓRICO (SÉRIES TEMPORAIS)
+            # ==================================================================
             fuso_br = dt.timezone(dt.timedelta(hours=-3))
             hoje_str = dt.datetime.now(fuso_br).strftime('%Y-%m-%d')
-            dados_historico = {"data_referencia": "", "posicoes": {}}
+            dados_historico = {"historico": {}}
             
             nome_json = "historico_bolao.json"
             if nome_json in mapa_arquivos:
@@ -127,11 +123,32 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 baix_json = MediaIoBaseDownload(bytes_json, req_json)
                 while not baix_json.next_chunk()[1]: pass
                 bytes_json.seek(0)
-                try: dados_historico = json.loads(bytes_json.read().decode('utf-8'))
+                try: 
+                    # Tenta ler o novo formato. Se for o formato velho, ele ignora e cria um novo.
+                    conteudo_lido = json.loads(bytes_json.read().decode('utf-8'))
+                    if "historico" in conteudo_lido:
+                        dados_historico = conteudo_lido
                 except: pass
             
-            posicoes_antigas = dados_historico.get("posicoes", {})
-            nova_foto_diaria = (hoje_str != dados_historico.get("data_referencia", ""))
+            linha_do_tempo = dados_historico.get("historico", {})
+            nova_foto_diaria = (hoje_str not in linha_do_tempo)
+            
+            # Descobrindo qual foi a data "de ontem" (a última foto tirada antes de hoje)
+            datas_ordenadas = sorted(linha_do_tempo.keys())
+            data_comparacao = None
+            
+            if nova_foto_diaria and len(datas_ordenadas) > 0:
+                # Se ainda não tiramos a foto de hoje, comparamos a tabela atual com a última foto disponível (ontem)
+                data_comparacao = datas_ordenadas[-1]
+            elif not nova_foto_diaria and len(datas_ordenadas) > 1:
+                # Se já tiramos a foto de hoje (já tem histórico de hoje), comparamos com o dia anterior a ele
+                data_comparacao = datas_ordenadas[-2]
+            elif not nova_foto_diaria and len(datas_ordenadas) == 1:
+                 # Se só temos a foto de hoje, não há variação ainda
+                 data_comparacao = None
+
+            posicoes_antigas = linha_do_tempo.get(data_comparacao, {}) if data_comparacao else {}
+            # ==================================================================
 
             # LER ARQUIVO DE CONTROLE (LIVE)
             id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
@@ -164,10 +181,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     continue
                     
                 id_part = mapa_arquivos[arquivo_palpite]
-                
-                # --- CHAMA A FUNÇÃO EM CACHE (MUITO RÁPIDO!) ---
                 palpites = carregar_palpites_em_cache(id_part)
-                # -----------------------------------------------
                 
                 pontos_totais = 0
                 for r in range(3, 75):
@@ -202,6 +216,10 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     participante['dif'] = f"+{dif}" if dif > 0 else "="
                 else: participante['dif'] = "-"
 
+                # ==============================================================
+                # CÁLCULO DE VARIAÇÃO USANDO O NOVO HISTÓRICO
+                # ==============================================================
+                # Se não tem posição antiga, ele mantém a variação neutra
                 pos_antiga = posicoes_antigas.get(participante['nome'], posicao_atual)
                 variacao = pos_antiga - posicao_atual
                 
@@ -210,16 +228,18 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 else: participante['var_html'] = "<span style='color: #94A3B8;'>➖</span>"
 
                 posicoes_para_json[participante['nome']] = posicao_atual
+                # ==============================================================
 
-            # ATUALIZAR JSON
+            # ATUALIZAR JSON DE HISTÓRICO (SÉRIE TEMPORAL)
             if nova_foto_diaria:
-                novo_historico = {"data_referencia": hoje_str, "posicoes": posicoes_para_json}
+                linha_do_tempo[hoje_str] = posicoes_para_json
+                novo_historico = {"historico": linha_do_tempo}
+                
                 json_bytes = io.BytesIO(json.dumps(novo_historico).encode('utf-8'))
                 media_json = MediaIoBaseUpload(json_bytes, mimetype='application/json', resumable=True)
                 
                 if nome_json in mapa_arquivos: service.files().update(fileId=mapa_arquivos[nome_json], media_body=media_json).execute()
                 else: service.files().create(body={'name': nome_json, 'parents': [ID_PASTA_DRIVE]}, media_body=media_json).execute()
-                for p in lista_ranking: p['var_html'] = "<span style='color: #94A3B8;'>➖</span>"
 
             # GRAVAR EXCEL
             bytes_controle.seek(0)
@@ -381,10 +401,7 @@ with aba_palpites:
                     arq_palpite = f"{nome}.xlsx"
                     if arq_palpite in mapa_arquivos:
                         id_part = mapa_arquivos[arq_palpite]
-                        
-                        # --- CHAMA A FUNÇÃO EM CACHE AQUI TAMBÉM ---
                         palpites_usuario = carregar_palpites_em_cache(id_part)
-                        # -------------------------------------------
                         
                         pontos_do_dia = 0
                         cards_html = ""
