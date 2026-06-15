@@ -97,7 +97,7 @@ st.title("🏆 Apuração do Bolão da Copa 2026 (THE) - V2")
 st.write("Clique no botão abaixo para processar os palpites e atualizar o ranking em tempo real.")
 
 if st.button("🚀 Atualizar Classificação", type="primary"):
-    with st.spinner("Sincronizando com o Drive... (Isso será muito rápido graças ao Cache!)"):
+    with st.spinner("Sincronizando com o Drive..."):
         try:
             service = obter_serviço_drive()
             query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
