@@ -42,14 +42,10 @@ def calcular_pontos(g_m_real, g_v_real, g_m_palpite, g_v_palpite):
     return 2
 
 def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posicoes_destaque=None):
-    """Gera um bloco HTML contínuo com Dark Theme de alto contraste e legibilidade."""
-    if posicoes_destaque is None:
-        posicoes_destaque = []
-        
+    if posicoes_destaque is None: posicoes_destaque = []
     html = f"<div style='background: #0F172A; padding: 15px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.35); text-align: center; margin-bottom: 20px; font-family: sans-serif;'>"
     html += f"<h4 style='margin-bottom: 0px; color: #F8FAFC;'>{titulo}</h4>"
     html += f"<p style='margin-top: 0px; font-size: 14px; font-style: italic; color: #CBD5E1;'>{subtitulo}</p>"
-    
     html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
     html += "<tr><th style='padding: 8px;'>Pos</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px;'>Pts</th></tr>"
@@ -58,7 +54,6 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     for p in participantes:
         pos_str = p['posicao'].replace("º Lugar", "").strip()
         is_highlight = (pos_str.isdigit() and int(pos_str) in posicoes_destaque)
-        
         bg_color = cor_destaque if is_highlight else "#1E293B"
         
         html += f"<tr style='background-color: {bg_color}; border-bottom: 1px solid #334155;'>"
@@ -71,7 +66,7 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     return html
 
 # ==============================================================================
-# CONFIGURAÇÃO VISUAL DA PÁGINA WEB E GESTÃO DE ESTADO
+# CONFIGURAÇÃO VISUAL E GESTÃO DE ESTADO
 # ==============================================================================
 st.set_page_config(page_title="Bolão Copa 2026 (THE)", page_icon="⚽", layout="wide")
 
@@ -144,12 +139,10 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 lista_ranking.append({'nome': nome, 'pontos': pontos_totais})
                 
             wb_leitura.close()
-            
             lista_ranking.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
             
             posicao_atual = 1
             pontos_anteriores = None
-            
             bytes_controle.seek(0)
             wb_gravar = openpyxl.load_workbook(bytes_controle, data_only=False)
             if 'Dados Pessoais' in wb_gravar.sheetnames: wb_gravar.remove(wb_gravar['Dados Pessoais'])
@@ -165,7 +158,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 if participante['pontos'] != pontos_anteriores:
                     posicao_atual = idx + 1
                 pontos_anteriores = participante['pontos']
-                
                 participante['posicao'] = f"{posicao_atual}º Lugar"
                 
                 ws_tabela_gravar[f'A{linha_atual}'].value = participante['nome']
@@ -183,17 +175,10 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             mimetype_excel = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             media_upload = MediaIoBaseUpload(arquivo_saida_bytes, mimetype=mimetype_excel, resumable=True)
             
-            if nome_saida in mapa_arquivos:
-                service.files().update(fileId=mapa_arquivos[nome_saida], media_body=media_upload).execute()
-            else:
-                metadados = {'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}
-                service.files().create(body=metadados, media_body=media_upload).execute()
+            if nome_saida in mapa_arquivos: service.files().update(fileId=mapa_arquivos[nome_saida], media_body=media_upload).execute()
+            else: service.files().create(body={'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}, media_body=media_upload).execute()
             
-            st.markdown("""
-            <div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px; font-family: sans-serif;'>
-                <strong>Tabela atualizada com sucesso no Google Drive!</strong>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown("<div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px;'><strong>Tabela atualizada com sucesso no Google Drive!</strong></div>", unsafe_allow_html=True)
             
         except Exception as e:
             st.error(f"Ocorreu um erro no processamento: {e}")
@@ -205,7 +190,7 @@ st.divider()
 # ==============================================================================
 aba_ranking, aba_palpites = st.tabs(["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada"])
 
-# --- ABA 1: RANKING ESTILIZADO (DARK THEME + FATIAMENTO DINÂMICO) ---
+# --- ABA 1: RANKING ESTILIZADO ---
 with aba_ranking:
     if not st.session_state.ranking_processado:
         st.info("👆 Clique no botão azul lá em cima para buscar os dados no Google Drive e gerar a classificação atualizada.")
@@ -213,72 +198,35 @@ with aba_ranking:
         dados = st.session_state.ranking_processado
         N = len(dados)
         
-        # 1. Lógica Profissionais (Mínimo 5, expande se houver empate no limite)
         idx_prof = 5 if N >= 5 else N
-        while idx_prof < N and dados[idx_prof]['pontos'] == dados[idx_prof - 1]['pontos']:
-            idx_prof += 1
+        while idx_prof < N and dados[idx_prof]['pontos'] == dados[idx_prof - 1]['pontos']: idx_prof += 1
             
-        # 2. Lógica Lanterna (Mínimo 3, expande para trás se houver empate no limite)
-        # O 'max' garante que a lanterna não engula os profissionais se todo mundo empatar
         idx_lant = max(N - 3, idx_prof) 
-        while idx_lant > idx_prof and dados[idx_lant - 1]['pontos'] == dados[idx_lant]['pontos']:
-            idx_lant -= 1
+        while idx_lant > idx_prof and dados[idx_lant - 1]['pontos'] == dados[idx_lant]['pontos']: idx_lant -= 1
             
-        # 3. Lógica Amadores (Tenta pegar os próximos 10, expande se empatar)
         alvo_amad = idx_prof + 10
-        # O 'min' garante que os amadores não invadam a zona da lanterna
         idx_amad = min(alvo_amad, idx_lant) 
-        while idx_amad < idx_lant and dados[idx_amad]['pontos'] == dados[idx_amad - 1]['pontos']:
-            idx_amad += 1
+        while idx_amad < idx_lant and dados[idx_amad]['pontos'] == dados[idx_amad - 1]['pontos']: idx_amad += 1
             
-        # Aplica as fatias perfeitamente cortadas
-        profissionais = dados[:idx_prof]
-        amadores = dados[idx_prof:idx_amad]
-        peladeiros = dados[idx_amad:idx_lant] 
-        lanterna = dados[idx_lant:]
+        profissionais, amadores = dados[:idx_prof], dados[idx_prof:idx_amad]
+        peladeiros, lanterna = dados[idx_amad:idx_lant], dados[idx_lant:]
         
         col1, col2, col3 = st.columns(3)
-        
         with col1:
-            if profissionais:
-                html_prof = gerar_tabela_html(
-                    profissionais, 
-                    "Profissionais", "- Elite do Pitaco -", 
-                    cor_destaque="#166534", 
-                    posicoes_destaque=[1, 2, 3, 4, 5]
-                )
-                st.markdown(html_prof, unsafe_allow_html=True)
-            
+            if profissionais: st.markdown(gerar_tabela_html(profissionais, "Profissionais", "- Elite do Pitaco -", "#166534", [1, 2, 3, 4, 5]), unsafe_allow_html=True)
         with col2:
-            if amadores:
-                html_amadores = gerar_tabela_html(
-                    amadores, 
-                    "Amadores", "- Os que ainda sonham -"
-                )
-                st.markdown(html_amadores, unsafe_allow_html=True)
-            
+            if amadores: st.markdown(gerar_tabela_html(amadores, "Amadores", "- Os que ainda sonham -"), unsafe_allow_html=True)
         with col3:
-            if peladeiros:
-                html_peladeiros = gerar_tabela_html(
-                    peladeiros, 
-                    "Peladeiros", "- Especialistas em Errar -"
-                )
-                st.markdown(html_peladeiros, unsafe_allow_html=True)
+            if peladeiros: st.markdown(gerar_tabela_html(peladeiros, "Peladeiros", "- Especialistas em Errar -"), unsafe_allow_html=True)
             
         st.write("---")
         col_vazia1, col_lanterna, col_vazia2 = st.columns([1, 2, 1])
         with col_lanterna:
             if lanterna:
                 posicoes_lanterna = [int(p['posicao'].replace("º Lugar", "").strip()) for p in lanterna]
-                html_lanterna = gerar_tabela_html(
-                    lanterna, 
-                    "Prêmio Espírito Coletivo", "- Bastava Apostar ao Contrário -",
-                    cor_destaque="#991B1B", 
-                    posicoes_destaque=posicoes_lanterna
-                )
-                st.markdown(html_lanterna, unsafe_allow_html=True)
+                st.markdown(gerar_tabela_html(lanterna, "Prêmio Espírito Coletivo", "- Bastava Apostar ao Contrário -", "#991B1B", posicoes_lanterna), unsafe_allow_html=True)
 
-# --- ABA 2: PALPITES DO DIA ---
+# --- ABA 2: PALPITES DO DIA (NOVO DESIGN GAMIFICADO) ---
 with aba_palpites:
     st.subheader("👀 Espiar Palpites da Rodada")
     
@@ -288,16 +236,15 @@ with aba_palpites:
     
     data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Ex: 12/6):", value=data_padrao)
     
-    if st.button("🔍 Ver Palpites do Dia", type="secondary"):
-        with st.spinner("Buscando os palpites..."):
+    if st.button("🔍 Buscar Rodada", type="secondary"):
+        with st.spinner("Analisando palpites e resultados..."):
             try:
                 service = obter_serviço_drive()
                 pesq = data_pesquisa.strip()
                 if "/" in pesq:
                     try: pesq_limpa = f"{int(pesq.split('/')[0])}/{int(pesq.split('/')[1])}"
                     except: pesq_limpa = pesq
-                else:
-                    pesq_limpa = pesq
+                else: pesq_limpa = pesq
 
                 query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
                 resultados = service.files().list(q=query, fields="files(id, name)").execute()
@@ -316,8 +263,44 @@ with aba_palpites:
                     
                 bytes_c.seek(0)
                 wb_leitura = openpyxl.load_workbook(bytes_c, data_only=True)
-                ws_tabela = wb_leitura['TABELA']
                 
+                # 1. PEGAR JOGOS REAIS DO DIA
+                ws_fase1 = wb_leitura['FASE 1']
+                jogos_reais_do_dia = {}
+                for r in range(3, 75):
+                    val_data = ws_fase1[f'C{r}'].value
+                    if val_data is None: continue
+                    data_jogo = f"{val_data.day}/{val_data.month}" if isinstance(val_data, dt.datetime) else str(val_data).strip()
+                    if "/" in data_jogo and not isinstance(val_data, dt.datetime):
+                        try: data_jogo = f"{int(data_jogo.split('/')[0])}/{int(data_jogo.split('/')[1])}"
+                        except: pass
+                    
+                    if data_jogo == pesq_limpa:
+                        jogos_reais_do_dia[r] = {
+                            'time_casa': str(ws_fase1[f'F{r}'].value).strip(),
+                            'g_casa': ws_fase1[f'G{r}'].value,
+                            'g_fora': ws_fase1[f'I{r}'].value,
+                            'time_fora': str(ws_fase1[f'J{r}'].value).strip()
+                        }
+
+                # 2. RENDERIZAR RESULTADOS REAIS NO TOPO
+                if jogos_reais_do_dia:
+                    st.markdown("### 🏟️ Resultados Oficiais")
+                    cols_reais = st.columns(len(jogos_reais_do_dia))
+                    for idx, (linha, jogo) in enumerate(jogos_reais_do_dia.items()):
+                        gc = int(float(jogo['g_casa'])) if jogo['g_casa'] is not None else "-"
+                        gf = int(float(jogo['g_fora'])) if jogo['g_fora'] is not None else "-"
+                        with cols_reais[idx % len(cols_reais)]:
+                            st.markdown(f"""
+                            <div style="background:#1E293B; border:1px solid #334155; border-radius:8px; padding:12px; text-align:center; margin-bottom:15px;">
+                                <div style="font-size: 16px; font-weight: bold; color: #F8FAFC;">
+                                    {jogo['time_casa']} &nbsp;<span style="color:#60A5FA;">{gc} x {gf}</span>&nbsp; {jogo['time_fora']}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                # 3. PEGAR PARTICIPANTES
+                ws_tabela = wb_leitura['TABELA']
                 participantes = []
                 for r in range(2, 101):
                     nome = ws_tabela[f'A{r}'].value
@@ -325,8 +308,14 @@ with aba_palpites:
                         participantes.append(str(nome).strip())
                 wb_leitura.close()
                 
-                st.write(f"**Buscando os palpites de todos para os jogos do dia: {pesq_limpa}...**")
+                # Dicionário rápido para buscar a posição geral do session_state
+                dict_ranking = {p['nome']: p for p in st.session_state.ranking_processado} if st.session_state.ranking_processado else {}
                 
+                dados_painel = []
+                melhor_pontuacao_dia = -1
+                herois_do_dia = []
+
+                # 4. PROCESSAR PALPITES DOS PARTICIPANTES
                 for nome in participantes:
                     arq_palpite = f"{nome}.xlsx"
                     if arq_palpite in mapa_arquivos:
@@ -341,43 +330,80 @@ with aba_palpites:
                         wb_p = openpyxl.load_workbook(bytes_p, data_only=True)
                         ws_p = wb_p['FASE 1']
                         
-                        palpites_do_dia = []
-                        COLUNA_DATA = 'C'  
+                        pontos_do_dia = 0
+                        cards_html = ""
                         
-                        for r in range(3, 75):
-                            val_data = ws_p[f'{COLUNA_DATA}{r}'].value
-                            if val_data is None: continue
+                        for r, jogo_real in jogos_reais_do_dia.items():
+                            palp_c = ws_p[f'G{r}'].value
+                            palp_f = ws_p[f'I{r}'].value
                             
-                            if isinstance(val_data, dt.datetime):
-                                data_jogo = f"{val_data.day}/{val_data.month}"
-                            else:
-                                txt = str(val_data).strip()
-                                if "/" in txt:
-                                    try: data_jogo = f"{int(txt.split('/')[0])}/{int(txt.split('/')[1])}"
-                                    except: data_jogo = txt
-                                else:
-                                    data_jogo = txt
+                            try: p_c_str = str(int(float(palp_c))) if palp_c is not None else "-"
+                            except: p_c_str = "-"
+                            try: p_f_str = str(int(float(palp_f))) if palp_f is not None else "-"
+                            except: p_f_str = "-"
                             
-                            if data_jogo == pesq_limpa:
-                                time_casa = str(ws_p[f'F{r}'].value).strip()
-                                gols_casa = ws_p[f'G{r}'].value
-                                gols_fora = ws_p[f'I{r}'].value
-                                time_fora = str(ws_p[f'J{r}'].value).strip()
+                            # Logica de Cores (Verde/Azul/Vermelho/Cinza)
+                            cor_borda = "#334155" # Cinza padrão (jogo não aconteceu)
+                            if jogo_real['g_casa'] is not None and jogo_real['g_fora'] is not None:
+                                pts = calcular_pontos(jogo_real['g_casa'], jogo_real['g_fora'], palp_c, palp_f)
+                                pontos_do_dia += pts
+                                if pts == 7: cor_borda = "#166534" # Verde (Na mosca)
+                                elif pts in [2, 3, 4]: cor_borda = "#2563EB" # Azul (Acertou lado)
+                                else: cor_borda = "#991B1B" # Vermelho (Errou tudo)
                                 
-                                try: g_casa_str = str(int(float(gols_casa))) if gols_casa is not None and str(gols_casa).strip() != "" else "-"
-                                except ValueError: g_casa_str = "-"
-                                    
-                                try: g_fora_str = str(int(float(gols_fora))) if gols_fora is not None and str(gols_fora).strip() != "" else "-"
-                                except ValueError: g_fora_str = "-"
-                                
-                                palpites_do_dia.append(f"⚽ {time_casa} **{g_casa_str} x {g_fora_str}** {time_fora}")
-                        
+                            cards_html += f"""
+                            <div style="background:#0F172A; border:1px solid {cor_borda}; border-radius:6px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                               <span style="color:#CBD5E1; width:30%; text-align:right; font-size:14px;">{jogo_real['time_casa']}</span>
+                               <span style="color:#F8FAFC; font-weight:bold; width:40%; text-align:center; font-size:15px;">{p_c_str} x {p_f_str}</span>
+                               <span style="color:#CBD5E1; width:30%; text-align:left; font-size:14px;">{jogo_real['time_fora']}</span>
+                            </div>
+                            """
                         wb_p.close()
                         
-                        if palpites_do_dia:
-                            with st.expander(f"👤 Palpites de {nome}"):
-                                for p in palpites_do_dia:
-                                    st.markdown(p)
-                                    
+                        # Definir informações do cabeçalho
+                        info = dict_ranking.get(nome, {'pontos': '?', 'posicao': '-'})
+                        pos_str = str(info['posicao']).replace("º Lugar", "").strip()
+                        
+                        emoji = "👤"
+                        if pos_str == '1': emoji = "🥇"
+                        elif pos_str == '2': emoji = "🥈"
+                        elif pos_str == '3': emoji = "🥉"
+                        
+                        cabecalho = f"{emoji} {nome} | {info['pontos']} pts | {info['posicao']}"
+                        
+                        dados_painel.append({
+                            'nome': nome,
+                            'cabecalho': cabecalho,
+                            'cards_html': cards_html,
+                            'pontos_dia': pontos_do_dia
+                        })
+                        
+                        if pontos_do_dia > melhor_pontuacao_dia:
+                            melhor_pontuacao_dia = pontos_do_dia
+                            herois_do_dia = [nome]
+                        elif pontos_do_dia == melhor_pontuacao_dia and pontos_do_dia > 0:
+                            herois_do_dia.append(nome)
+
+                # 5. DESTAQUE DO DIA (GAMIFICAÇÃO)
+                if jogos_reais_do_dia and melhor_pontuacao_dia > 0:
+                    st.markdown("---")
+                    st.markdown("### 🔥 Destaque da Rodada")
+                    nomes_herois = ", ".join(herois_do_dia)
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #F59E0B; padding: 15px; border-radius: 6px; margin-bottom: 25px;">
+                        <h4 style="color: #FBBF24; margin: 0 0 5px 0;">{nomes_herois}</h4>
+                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;">Mito da rodada somando impressionantes <strong>{melhor_pontuacao_dia} pontos</strong> só nos jogos de hoje!</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # 6. RENDERIZAR GRID DE CARTÕES (ST.COLUMNS + ST.EXPANDER)
+                st.markdown("### 📋 Palpites da Galera")
+                
+                cols_grid = st.columns(3) # Grid de 3 colunas
+                for idx, painel in enumerate(dados_painel):
+                    with cols_grid[idx % 3]:
+                        with st.expander(painel['cabecalho']):
+                            st.markdown(painel['cards_html'], unsafe_allow_html=True)
+                            
             except Exception as e:
                 st.error(f"Ocorreu um erro na busca: {e}")
