@@ -310,3 +310,174 @@ with aba_ranking:
 
 with aba_palpites:
     st.write("O código da Sessão 2 (Espiar Palpites) continua o mesmo que alinhamos anteriormente.")
+# --- ABA 2: PALPITES DO DIA ---
+with aba_palpites:
+    st.subheader("👀 Espiar Palpites da Rodada")
+    
+    fuso_br = dt.timezone(dt.timedelta(hours=-3))
+    hoje = dt.datetime.now(fuso_br)
+    data_padrao = f"{hoje.day}/{hoje.month}"
+    
+    data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Ex: 12/6):", value=data_padrao)
+    
+    if st.button("🔍 Buscar Rodada", type="secondary"):
+        with st.spinner("Analisando palpites e resultados..."):
+            try:
+                service = obter_serviço_drive()
+                pesq = data_pesquisa.strip()
+                if "/" in pesq:
+                    try: pesq_limpa = f"{int(pesq.split('/')[0])}/{int(pesq.split('/')[1])}"
+                    except: pesq_limpa = pesq
+                else: pesq_limpa = pesq
+
+                query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
+                resultados = service.files().list(q=query, fields="files(id, name)").execute()
+                mapa_arquivos = {arq['name']: arq['id'] for arq in resultados.get('files', [])}
+                
+                if 'Arquivo_de_controle.xlsx' not in mapa_arquivos:
+                    st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado.")
+                    st.stop()
+                    
+                id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
+                req_c = service.files().get_media(fileId=id_controle)
+                bytes_c = io.BytesIO()
+                baix_c = MediaIoBaseDownload(bytes_c, req_c)
+                concluido = False
+                while not concluido: _, concluido = baix_c.next_chunk()
+                    
+                bytes_c.seek(0)
+                wb_leitura = openpyxl.load_workbook(bytes_c, data_only=True)
+                
+                ws_fase1 = wb_leitura['FASE 1']
+                jogos_reais_do_dia = {}
+                for r in range(3, 75):
+                    val_data = ws_fase1[f'C{r}'].value
+                    if val_data is None: continue
+                    data_jogo = f"{val_data.day}/{val_data.month}" if isinstance(val_data, dt.datetime) else str(val_data).strip()
+                    if "/" in data_jogo and not isinstance(val_data, dt.datetime):
+                        try: data_jogo = f"{int(data_jogo.split('/')[0])}/{int(data_jogo.split('/')[1])}"
+                        except: pass
+                    
+                    if data_jogo == pesq_limpa:
+                        jogos_reais_do_dia[r] = {
+                            'time_casa': str(ws_fase1[f'F{r}'].value).strip(),
+                            'g_casa': ws_fase1[f'G{r}'].value,
+                            'g_fora': ws_fase1[f'I{r}'].value,
+                            'time_fora': str(ws_fase1[f'J{r}'].value).strip()
+                        }
+
+                if jogos_reais_do_dia:
+                    st.markdown("### 🏟️ Resultados Oficiais")
+                    cols_reais = st.columns(len(jogos_reais_do_dia))
+                    for idx, (linha, jogo) in enumerate(jogos_reais_do_dia.items()):
+                        gc = int(float(jogo['g_casa'])) if jogo['g_casa'] is not None else "-"
+                        gf = int(float(jogo['g_fora'])) if jogo['g_fora'] is not None else "-"
+                        with cols_reais[idx % len(cols_reais)]:
+                            st.markdown(f"""
+                            <div style="background:#1E293B; border:1px solid #334155; border-radius:8px; padding:12px; text-align:center; margin-bottom:15px;">
+                                <div style="font-size: 16px; font-weight: bold; color: #F8FAFC;">
+                                    {jogo['time_casa']} &nbsp;<span style="color:#60A5FA;">{gc} x {gf}</span>&nbsp; {jogo['time_fora']}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                ws_tabela = wb_leitura['TABELA']
+                participantes = []
+                for r in range(2, 101):
+                    nome = ws_tabela[f'A{r}'].value
+                    if nome and str(nome).strip() != "" and str(nome).strip().lower() != "participante":
+                        participantes.append(str(nome).strip())
+                wb_leitura.close()
+                
+                dict_ranking = {p['nome']: p for p in st.session_state.ranking_processado} if st.session_state.ranking_processado else {}
+                
+                dados_painel = []
+                melhor_pontuacao_dia = -1
+                herois_do_dia = []
+
+                for nome in participantes:
+                    arq_palpite = f"{nome}.xlsx"
+                    if arq_palpite in mapa_arquivos:
+                        id_p = mapa_arquivos[arq_palpite]
+                        req_p = service.files().get_media(fileId=id_p)
+                        bytes_p = io.BytesIO()
+                        baix_p = MediaIoBaseDownload(bytes_p, req_p)
+                        conc_p = False
+                        while not conc_p: _, conc_p = baix_p.next_chunk()
+                        
+                        bytes_p.seek(0)
+                        wb_p = openpyxl.load_workbook(bytes_p, data_only=True)
+                        ws_p = wb_p['FASE 1']
+                        
+                        pontos_do_dia = 0
+                        cards_html = ""
+                        
+                        for r, jogo_real in jogos_reais_do_dia.items():
+                            palp_c = ws_p[f'G{r}'].value
+                            palp_f = ws_p[f'I{r}'].value
+                            
+                            try: p_c_str = str(int(float(palp_c))) if palp_c is not None else "-"
+                            except: p_c_str = "-"
+                            try: p_f_str = str(int(float(palp_f))) if palp_f is not None else "-"
+                            except: p_f_str = "-"
+                            
+                            cor_borda = "#334155" 
+                            if jogo_real['g_casa'] is not None and jogo_real['g_fora'] is not None:
+                                pts = calcular_pontos(jogo_real['g_casa'], jogo_real['g_fora'], palp_c, palp_f)
+                                pontos_do_dia += pts
+                                if pts == 7: cor_borda = "#166534" 
+                                elif pts in [2, 3, 4]: cor_borda = "#2563EB" 
+                                else: cor_borda = "#991B1B" 
+                                
+                            cards_html += f"""
+                            <div style="background:#0F172A; border:1px solid {cor_borda}; border-radius:6px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                               <span style="color:#CBD5E1; width:30%; text-align:right; font-size:14px;">{jogo_real['time_casa']}</span>
+                               <span style="color:#F8FAFC; font-weight:bold; width:40%; text-align:center; font-size:15px;">{p_c_str} x {p_f_str}</span>
+                               <span style="color:#CBD5E1; width:30%; text-align:left; font-size:14px;">{jogo_real['time_fora']}</span>
+                            </div>
+                            """
+                        wb_p.close()
+                        
+                        info = dict_ranking.get(nome, {'pontos': '?', 'posicao': '-'})
+                        pos_str = str(info['posicao']).replace("º Lugar", "").strip()
+                        
+                        emoji = "👤"
+                        if pos_str == '1': emoji = "🥇"
+                        elif pos_str == '2': emoji = "🥈"
+                        elif pos_str == '3': emoji = "🥉"
+                        
+                        cabecalho = f"{emoji} {nome} | {info['pontos']} pts | {info['posicao']}"
+                        
+                        dados_painel.append({
+                            'nome': nome,
+                            'cabecalho': cabecalho,
+                            'cards_html': cards_html,
+                            'pontos_dia': pontos_do_dia
+                        })
+                        
+                        if pontos_do_dia > melhor_pontuacao_dia:
+                            melhor_pontuacao_dia = pontos_do_dia
+                            herois_do_dia = [nome]
+                        elif pontos_do_dia == melhor_pontuacao_dia and pontos_do_dia > 0:
+                            herois_do_dia.append(nome)
+
+                if jogos_reais_do_dia and melhor_pontuacao_dia > 0:
+                    st.markdown("---")
+                    st.markdown("### 🔥 Destaque da Rodada")
+                    nomes_herois = ", ".join(herois_do_dia)
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #F59E0B; padding: 15px; border-radius: 6px; margin-bottom: 25px;">
+                        <h4 style="color: #FBBF24; margin: 0 0 5px 0;">{nomes_herois}</h4>
+                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;">Mito da rodada somando impressionantes <strong>{melhor_pontuacao_dia} pontos</strong> só nos jogos de hoje!</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("### 📋 Palpites da Galera")
+                cols_grid = st.columns(3)
+                for idx, painel in enumerate(dados_painel):
+                    with cols_grid[idx % 3]:
+                        with st.expander(painel['cabecalho']):
+                            st.markdown(painel['cards_html'], unsafe_allow_html=True)
+                            
+            except Exception as e:
+                st.error(f"Ocorreu um erro na busca: {e}")
