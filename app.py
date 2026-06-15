@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import datetime as dt
 import streamlit as st
 import openpyxl
@@ -49,8 +50,7 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     
     html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
-    # Adicionada a coluna Dif aqui no cabeçalho
-    html += "<tr><th style='padding: 8px;'>Pos</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px;'>Pts</th><th style='padding: 8px; color:#94A3B8;'>Dif</th></tr>"
+    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px;'>Pts</th><th style='padding: 8px; color:#94A3B8;'>Dif</th></tr>"
     html += "</thead><tbody>"
 
     for p in participantes:
@@ -60,10 +60,9 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
         
         html += f"<tr style='background-color: {bg_color}; border-bottom: 1px solid #334155;'>"
         html += f"<td style='padding: 6px; font-weight: bold;'>{p['posicao'].replace(' Lugar', '')}</td>"
-        # Usando o nome_exibicao que contém as medalhas
+        html += f"<td style='padding: 6px; font-size: 13px;'>{p.get('var_html', '➖')}</td>"
         html += f"<td style='text-align: left; padding: 6px;'>{p.get('nome_exibicao', p['nome'])}</td>"
         html += f"<td style='padding: 6px; font-weight: bold;'>{p['pontos']}</td>"
-        # Inserindo a diferença calculada
         html += f"<td style='padding: 6px; font-size: 12px; color:#94A3B8;'>{p.get('dif', '-')}</td>"
         html += "</tr>"
 
@@ -82,7 +81,7 @@ st.title("🏆 Apuração do Bolão da Copa 2026 (THE) - V2")
 st.write("Clique no botão abaixo para processar os palpites no Drive e atualizar o ranking em tempo real.")
 
 if st.button("🚀 Atualizar Classificação", type="primary"):
-    with st.spinner("Lendo planilhas no Google Drive... Isso pode levar alguns segundos."):
+    with st.spinner("Lendo planilhas e histórico no Google Drive..."):
         try:
             service = obter_serviço_drive()
             query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
@@ -93,6 +92,28 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado na pasta do Drive.")
                 st.stop()
                 
+            # --- LER HISTÓRICO JSON (OPÇÃO B) ---
+            fuso_br = dt.timezone(dt.timedelta(hours=-3))
+            hoje_str = dt.datetime.now(fuso_br).strftime('%Y-%m-%d')
+            dados_historico = {"data_referencia": "", "posicoes": {}}
+            
+            nome_json = "historico_bolao.json"
+            if nome_json in mapa_arquivos:
+                id_json = mapa_arquivos[nome_json]
+                req_json = service.files().get_media(fileId=id_json)
+                bytes_json = io.BytesIO()
+                baix_json = MediaIoBaseDownload(bytes_json, req_json)
+                while not baix_json.next_chunk()[1]: pass
+                bytes_json.seek(0)
+                try: dados_historico = json.loads(bytes_json.read().decode('utf-8'))
+                except: pass
+            
+            posicoes_antigas = dados_historico.get("posicoes", {})
+            data_hist = dados_historico.get("data_referencia", "")
+            nova_foto_diaria = (hoje_str != data_hist)
+            # ------------------------------------
+
+            # LER ARQUIVO DE CONTROLE
             id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
             requisicao = service.files().get_media(fileId=id_controle)
             bytes_controle = io.BytesIO()
@@ -111,6 +132,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             ws_tabela_leitura = wb_leitura['TABELA']
             lista_ranking = []
             
+            # PROCESSAR PLANILHAS
             for row_tabela in range(2, 101):
                 celula_nome = ws_tabela_leitura[f'A{row_tabela}'].value
                 if celula_nome is None or str(celula_nome).strip() == "" or str(celula_nome).strip().lower() == "participante": continue
@@ -147,39 +169,66 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             
             posicao_atual = 1
             pontos_anteriores = None
+            posicoes_para_json = {}
             
-            # --- NOVIDADE: Lógica de Posições, Medalhas e Distância (Dif) ---
             for idx, participante in enumerate(lista_ranking):
                 if participante['pontos'] != pontos_anteriores:
                     posicao_atual = idx + 1
                 pontos_anteriores = participante['pontos']
                 participante['posicao'] = f"{posicao_atual}º Lugar"
                 
-                # Inserindo Medalhas Baseado na Posição
+                # Medalhas Automáticas
                 emoji = ""
                 if posicao_atual == 1: emoji = "🥇 "
                 elif posicao_atual == 2: emoji = "🥈 "
                 elif posicao_atual == 3: emoji = "🥉 "
                 participante['nome_exibicao'] = f"{emoji}{participante['nome']}"
                 
-                # Calculando a Diferença para o cara de baixo
+                # Distância para o próximo
                 if idx < len(lista_ranking) - 1:
                     pts_below = lista_ranking[idx+1]['pontos']
                     dif = participante['pontos'] - pts_below
                     participante['dif'] = f"+{dif}" if dif > 0 else "="
                 else:
                     participante['dif'] = "-"
-            # ----------------------------------------------------------------
-            
-            # Gravando no Excel
+
+                # Variação de Posição via JSON Histórico
+                pos_antiga = posicoes_antigas.get(participante['nome'], posicao_atual)
+                variacao = pos_antiga - posicao_atual
+                
+                if variacao > 0:
+                    participante['var_html'] = f"<span style='color: #22C55E;'>▲ {variacao}</span>"
+                elif variacao < 0:
+                    participante['var_html'] = f"<span style='color: #EF4444;'>▼ {abs(variacao)}</span>"
+                else:
+                    participante['var_html'] = "<span style='color: #94A3B8;'>➖</span>"
+
+                # Guarda a posição para a foto diária se precisar atualizar
+                posicoes_para_json[participante['nome']] = posicao_atual
+
+            # ATUALIZAR JSON NO DRIVE SE FOR UM NOVO DIA
+            if nova_foto_diaria:
+                novo_historico = {
+                    "data_referencia": hoje_str,
+                    "posicoes": posicoes_para_json
+                }
+                json_bytes = io.BytesIO(json.dumps(novo_historico).encode('utf-8'))
+                media_json = MediaIoBaseUpload(json_bytes, mimetype='application/json', resumable=True)
+                
+                if nome_json in mapa_arquivos:
+                    service.files().update(fileId=mapa_arquivos[nome_json], media_body=media_json).execute()
+                else:
+                    service.files().create(body={'name': nome_json, 'parents': [ID_PASTA_DRIVE]}, media_body=media_json).execute()
+                
+                # Como é o primeiro update do dia, reseta visualmente as variações para 0
+                for p in lista_ranking: p['var_html'] = "<span style='color: #94A3B8;'>➖</span>"
+
+            # GRAVAR NO EXCEL (Planilha de Controle)
             bytes_controle.seek(0)
             wb_gravar = openpyxl.load_workbook(bytes_controle, data_only=False)
             if 'Dados Pessoais' in wb_gravar.sheetnames: wb_gravar.remove(wb_gravar['Dados Pessoais'])
             ws_tabela_gravar = wb_gravar['TABELA']
-            
-            for r in range(1, 101):
-                ws_tabela_gravar[f'A{r}'].value, ws_tabela_gravar[f'B{r}'].value, ws_tabela_gravar[f'C{r}'].value = None, None, None
-                
+            for r in range(1, 101): ws_tabela_gravar[f'A{r}'].value, ws_tabela_gravar[f'B{r}'].value, ws_tabela_gravar[f'C{r}'].value = None, None, None
             ws_tabela_gravar['A1'].value, ws_tabela_gravar['B1'].value, ws_tabela_gravar['C1'].value = "Participante", "Pontos", "Posição"
             
             for idx, participante in enumerate(lista_ranking):
@@ -198,7 +247,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             nome_saida = 'BOLÃO DA COPA DO MUNDO 2026 (THE).xlsx'
             mimetype_excel = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             media_upload = MediaIoBaseUpload(arquivo_saida_bytes, mimetype=mimetype_excel, resumable=True)
-            
             if nome_saida in mapa_arquivos: service.files().update(fileId=mapa_arquivos[nome_saida], media_body=media_upload).execute()
             else: service.files().create(body={'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}, media_body=media_upload).execute()
             
@@ -214,7 +262,6 @@ st.divider()
 # ==============================================================================
 aba_ranking, aba_palpites = st.tabs(["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada"])
 
-# --- ABA 1: RANKING ESTILIZADO ---
 with aba_ranking:
     if not st.session_state.ranking_processado:
         st.info("👆 Clique no botão azul lá em cima para buscar os dados no Google Drive e gerar a classificação atualizada.")
@@ -222,7 +269,7 @@ with aba_ranking:
         dados = st.session_state.ranking_processado
         N = len(dados)
         
-        # --- NOVIDADE: Card de Resumo do Líder Geral ---
+        # --- Card de Resumo do Líder Geral ---
         if dados:
             lider = dados[0]
             st.markdown(f"""
@@ -261,174 +308,5 @@ with aba_ranking:
                 posicoes_lanterna = [int(p['posicao'].replace("º Lugar", "").strip()) for p in lanterna]
                 st.markdown(gerar_tabela_html(lanterna, "Prêmio Espírito Coletivo", "- Bastava Apostar ao Contrário -", "#991B1B", posicoes_lanterna), unsafe_allow_html=True)
 
-# --- ABA 2: PALPITES DO DIA ---
 with aba_palpites:
-    st.subheader("👀 Espiar Palpites da Rodada")
-    
-    fuso_br = dt.timezone(dt.timedelta(hours=-3))
-    hoje = dt.datetime.now(fuso_br)
-    data_padrao = f"{hoje.day}/{hoje.month}"
-    
-    data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Ex: 12/6):", value=data_padrao)
-    
-    if st.button("🔍 Buscar Rodada", type="secondary"):
-        with st.spinner("Analisando palpites e resultados..."):
-            try:
-                service = obter_serviço_drive()
-                pesq = data_pesquisa.strip()
-                if "/" in pesq:
-                    try: pesq_limpa = f"{int(pesq.split('/')[0])}/{int(pesq.split('/')[1])}"
-                    except: pesq_limpa = pesq
-                else: pesq_limpa = pesq
-
-                query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
-                resultados = service.files().list(q=query, fields="files(id, name)").execute()
-                mapa_arquivos = {arq['name']: arq['id'] for arq in resultados.get('files', [])}
-                
-                if 'Arquivo_de_controle.xlsx' not in mapa_arquivos:
-                    st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado.")
-                    st.stop()
-                    
-                id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
-                req_c = service.files().get_media(fileId=id_controle)
-                bytes_c = io.BytesIO()
-                baix_c = MediaIoBaseDownload(bytes_c, req_c)
-                concluido = False
-                while not concluido: _, concluido = baix_c.next_chunk()
-                    
-                bytes_c.seek(0)
-                wb_leitura = openpyxl.load_workbook(bytes_c, data_only=True)
-                
-                ws_fase1 = wb_leitura['FASE 1']
-                jogos_reais_do_dia = {}
-                for r in range(3, 75):
-                    val_data = ws_fase1[f'C{r}'].value
-                    if val_data is None: continue
-                    data_jogo = f"{val_data.day}/{val_data.month}" if isinstance(val_data, dt.datetime) else str(val_data).strip()
-                    if "/" in data_jogo and not isinstance(val_data, dt.datetime):
-                        try: data_jogo = f"{int(data_jogo.split('/')[0])}/{int(data_jogo.split('/')[1])}"
-                        except: pass
-                    
-                    if data_jogo == pesq_limpa:
-                        jogos_reais_do_dia[r] = {
-                            'time_casa': str(ws_fase1[f'F{r}'].value).strip(),
-                            'g_casa': ws_fase1[f'G{r}'].value,
-                            'g_fora': ws_fase1[f'I{r}'].value,
-                            'time_fora': str(ws_fase1[f'J{r}'].value).strip()
-                        }
-
-                if jogos_reais_do_dia:
-                    st.markdown("### 🏟️ Resultados Oficiais")
-                    cols_reais = st.columns(len(jogos_reais_do_dia))
-                    for idx, (linha, jogo) in enumerate(jogos_reais_do_dia.items()):
-                        gc = int(float(jogo['g_casa'])) if jogo['g_casa'] is not None else "-"
-                        gf = int(float(jogo['g_fora'])) if jogo['g_fora'] is not None else "-"
-                        with cols_reais[idx % len(cols_reais)]:
-                            st.markdown(f"""
-                            <div style="background:#1E293B; border:1px solid #334155; border-radius:8px; padding:12px; text-align:center; margin-bottom:15px;">
-                                <div style="font-size: 16px; font-weight: bold; color: #F8FAFC;">
-                                    {jogo['time_casa']} &nbsp;<span style="color:#60A5FA;">{gc} x {gf}</span>&nbsp; {jogo['time_fora']}
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-
-                ws_tabela = wb_leitura['TABELA']
-                participantes = []
-                for r in range(2, 101):
-                    nome = ws_tabela[f'A{r}'].value
-                    if nome and str(nome).strip() != "" and str(nome).strip().lower() != "participante":
-                        participantes.append(str(nome).strip())
-                wb_leitura.close()
-                
-                dict_ranking = {p['nome']: p for p in st.session_state.ranking_processado} if st.session_state.ranking_processado else {}
-                
-                dados_painel = []
-                melhor_pontuacao_dia = -1
-                herois_do_dia = []
-
-                for nome in participantes:
-                    arq_palpite = f"{nome}.xlsx"
-                    if arq_palpite in mapa_arquivos:
-                        id_p = mapa_arquivos[arq_palpite]
-                        req_p = service.files().get_media(fileId=id_p)
-                        bytes_p = io.BytesIO()
-                        baix_p = MediaIoBaseDownload(bytes_p, req_p)
-                        conc_p = False
-                        while not conc_p: _, conc_p = baix_p.next_chunk()
-                        
-                        bytes_p.seek(0)
-                        wb_p = openpyxl.load_workbook(bytes_p, data_only=True)
-                        ws_p = wb_p['FASE 1']
-                        
-                        pontos_do_dia = 0
-                        cards_html = ""
-                        
-                        for r, jogo_real in jogos_reais_do_dia.items():
-                            palp_c = ws_p[f'G{r}'].value
-                            palp_f = ws_p[f'I{r}'].value
-                            
-                            try: p_c_str = str(int(float(palp_c))) if palp_c is not None else "-"
-                            except: p_c_str = "-"
-                            try: p_f_str = str(int(float(palp_f))) if palp_f is not None else "-"
-                            except: p_f_str = "-"
-                            
-                            cor_borda = "#334155" 
-                            if jogo_real['g_casa'] is not None and jogo_real['g_fora'] is not None:
-                                pts = calcular_pontos(jogo_real['g_casa'], jogo_real['g_fora'], palp_c, palp_f)
-                                pontos_do_dia += pts
-                                if pts == 7: cor_borda = "#166534" 
-                                elif pts in [2, 3, 4]: cor_borda = "#2563EB" 
-                                else: cor_borda = "#991B1B" 
-                                
-                            cards_html += f"""
-                            <div style="background:#0F172A; border:1px solid {cor_borda}; border-radius:6px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                               <span style="color:#CBD5E1; width:30%; text-align:right; font-size:14px;">{jogo_real['time_casa']}</span>
-                               <span style="color:#F8FAFC; font-weight:bold; width:40%; text-align:center; font-size:15px;">{p_c_str} x {p_f_str}</span>
-                               <span style="color:#CBD5E1; width:30%; text-align:left; font-size:14px;">{jogo_real['time_fora']}</span>
-                            </div>
-                            """
-                        wb_p.close()
-                        
-                        info = dict_ranking.get(nome, {'pontos': '?', 'posicao': '-'})
-                        pos_str = str(info['posicao']).replace("º Lugar", "").strip()
-                        
-                        emoji = "👤"
-                        if pos_str == '1': emoji = "🥇"
-                        elif pos_str == '2': emoji = "🥈"
-                        elif pos_str == '3': emoji = "🥉"
-                        
-                        cabecalho = f"{emoji} {nome} | {info['pontos']} pts | {info['posicao']}"
-                        
-                        dados_painel.append({
-                            'nome': nome,
-                            'cabecalho': cabecalho,
-                            'cards_html': cards_html,
-                            'pontos_dia': pontos_do_dia
-                        })
-                        
-                        if pontos_do_dia > melhor_pontuacao_dia:
-                            melhor_pontuacao_dia = pontos_do_dia
-                            herois_do_dia = [nome]
-                        elif pontos_do_dia == melhor_pontuacao_dia and pontos_do_dia > 0:
-                            herois_do_dia.append(nome)
-
-                if jogos_reais_do_dia and melhor_pontuacao_dia > 0:
-                    st.markdown("---")
-                    st.markdown("### 🔥 Destaque da Rodada")
-                    nomes_herois = ", ".join(herois_do_dia)
-                    st.markdown(f"""
-                    <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #F59E0B; padding: 15px; border-radius: 6px; margin-bottom: 25px;">
-                        <h4 style="color: #FBBF24; margin: 0 0 5px 0;">{nomes_herois}</h4>
-                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;">Mito da rodada somando impressionantes <strong>{melhor_pontuacao_dia} pontos</strong> só nos jogos de hoje!</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                st.markdown("### 📋 Palpites da Galera")
-                cols_grid = st.columns(3)
-                for idx, painel in enumerate(dados_painel):
-                    with cols_grid[idx % 3]:
-                        with st.expander(painel['cabecalho']):
-                            st.markdown(painel['cards_html'], unsafe_allow_html=True)
-                            
-            except Exception as e:
-                st.error(f"Ocorreu um erro na busca: {e}")
+    st.write("O código da Sessão 2 (Espiar Palpites) continua o mesmo que alinhamos anteriormente.")
