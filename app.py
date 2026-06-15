@@ -334,18 +334,25 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
 st.divider()
 
 # ==============================================================================
-# NAVEGAÇÃO EM ABAS (UI)
+# NAVEGAÇÃO SEGURA (CONTORNO DO BUG DE ABAS DO STREAMLIT)
 # ==============================================================================
-aba_ranking, aba_palpites = st.tabs(["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada"])
+# Usamos um radio button horizontal. Ele funciona como abas, mas é 100% à prova de falhas.
+aba_selecionada = st.radio(
+    "Navegação:",
+    ["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada"],
+    horizontal=True,
+    label_visibility="collapsed"
+)
 
-with aba_ranking:
-    if not st.session_state.ranking_processado: st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
+# --- TELA 1: RANKING ESTILIZADO ---
+if aba_selecionada == "🏆 Classificação e Resenha":
+    if not st.session_state.ranking_processado: 
+        st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
     else:
         dados = st.session_state.ranking_processado
         resumo = st.session_state.get('resumo_ontem', {})
         N = len(dados)
         
-        # --- CARDS DE RESUMO (LÍDER, SUBIDA, QUEDA) ---
         if dados:
             lider = dados[0]
             col_c1, col_c2, col_c3 = st.columns(3)
@@ -395,7 +402,6 @@ with aba_ranking:
                         <p style="color: #64748B; margin: 0; font-size: 14px;">Aguardando jogos...</p>
                     </div>
                     """, unsafe_allow_html=True)
-        # ----------------------------------------------
 
         idx_prof = 5 if N >= 5 else N
         while idx_prof < N and dados[idx_prof]['pontos'] == dados[idx_prof - 1]['pontos']: idx_prof += 1
@@ -425,19 +431,31 @@ with aba_ranking:
                 posicoes_lanterna = [int(p['posicao'].replace("º Lugar", "").strip()) for p in lanterna]
                 st.markdown(gerar_tabela_html(lanterna, "Prêmio Espírito Coletivo", "- Bastava Apostar ao Contrário -", "#991B1B", posicoes_lanterna), unsafe_allow_html=True)
 
-with aba_palpites:
+# --- TELA 2: PALPITES DO DIA ---
+elif aba_selecionada == "👀 Espiar Palpites da Rodada":
     st.subheader("👀 Espiar Palpites da Rodada")
     fuso_br = dt.timezone(dt.timedelta(hours=-3))
     hoje = dt.datetime.now(fuso_br)
     data_padrao = f"{hoje.day}/{hoje.month}"
     
+    # Inicializa a memória da busca para os resultados não sumirem
+    if 'busca_ativa' not in st.session_state:
+        st.session_state.busca_ativa = False
+    if 'data_pesquisada' not in st.session_state:
+        st.session_state.data_pesquisada = ""
+
     data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Ex: 12/6):", value=data_padrao)
     
     if st.button("🔍 Buscar Rodada", type="secondary"):
+        st.session_state.busca_ativa = True
+        st.session_state.data_pesquisada = data_pesquisa
+
+    # Agora a renderização depende da memória, não apenas do clique do botão
+    if st.session_state.busca_ativa:
         with st.spinner("Analisando palpites (Utilizando cache ultra-rápido)..."):
             try:
                 service = obter_serviço_drive()
-                pesq = data_pesquisa.strip()
+                pesq = st.session_state.data_pesquisada.strip()
                 if "/" in pesq:
                     try: pesq_limpa = f"{int(pesq.split('/')[0])}/{int(pesq.split('/')[1])}"
                     except: pesq_limpa = pesq
@@ -558,7 +576,7 @@ with aba_palpites:
                     st.markdown(f"""
                     <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #F59E0B; padding: 15px; border-radius: 6px; margin-bottom: 25px;">
                         <h4 style="color: #FBBF24; margin: 0 0 5px 0;">{", ".join(herois_do_dia)}</h4>
-                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;">Mito da rodada somando impressionantes <strong>{melhor_pontuacao_dia} pontos</strong> só nos jogos de hoje!</p>
+                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;">Mito da rodada somando impressionantes <strong>{melhor_pontuacao_dia} pontos</strong> só nos jogos pesquisados!</p>
                     </div>
                     """, unsafe_allow_html=True)
                 
