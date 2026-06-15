@@ -109,9 +109,15 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado na pasta do Drive.")
                 st.stop()
                 
-            # --- MANIPULAÇÃO DE SÉRIES TEMPORAIS (JSON) ---
+            # ==================================================================
+            # 1. PREPARANDO O BANCO DE HISTÓRICO
+            # ==================================================================
             fuso_br = dt.timezone(dt.timedelta(hours=-3))
-            hoje_str = dt.datetime.now(fuso_br).strftime('%Y-%m-%d')
+            hoje_date = dt.datetime.now(fuso_br).date()
+            ontem_date = hoje_date - dt.timedelta(days=1)
+            anteontem_date = hoje_date - dt.timedelta(days=2)
+            
+            hoje_str = hoje_date.strftime('%Y-%m-%d')
             dados_historico = {"historico": {}}
             
             nome_json = "historico_bolao.json"
@@ -129,35 +135,8 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             
             linha_do_tempo = dados_historico.get("historico", {})
             nova_foto_diaria = (hoje_str not in linha_do_tempo)
-            datas_passadas = sorted([d for d in linha_do_tempo.keys() if d < hoje_str])
-            
-            # Snapshots para a tabela ao vivo (Fim de Ontem)
-            pos_fim_ontem = linha_do_tempo[datas_passadas[-1]] if len(datas_passadas) >= 1 else {}
-            # Snapshots para o Card de Ontem (Início de Ontem vs Fim de Ontem)
-            pos_inicio_ontem = linha_do_tempo[datas_passadas[-2]] if len(datas_passadas) >= 2 else pos_fim_ontem
-            
-            data_ontem_str = datas_passadas[-1] if len(datas_passadas) >= 1 else None
 
-            # Cálculo exclusivo para os Cards de Destaque
-            var_ontem_cards = {}
-            for n, p_fin in pos_fim_ontem.items():
-                p_ini = pos_inicio_ontem.get(n, p_fin)
-                var_ontem_cards[n] = p_ini - p_fin # Valor positivo = subiu de posição
-                
-            m_subida = max(var_ontem_cards.values()) if var_ontem_cards else 0
-            m_queda = min(var_ontem_cards.values()) if var_ontem_cards else 0
-            
-            h_sub = [n for n, v in var_ontem_cards.items() if v == m_subida] if m_subida > 0 else []
-            v_que = [n for n, v in var_ontem_cards.items() if v == m_queda] if m_queda < 0 else []
-            
-            st.session_state.resumo_ontem = {
-                "data": data_ontem_str,
-                "maior_subida": {"nomes": h_sub, "valor": m_subida},
-                "maior_queda": {"nomes": v_que, "valor": abs(m_queda)}
-            }
-            # ----------------------------------------------
-
-            # LER ARQUIVO DE CONTROLE (LIVE)
+            # LER ARQUIVO DE CONTROLE
             id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
             requisicao = service.files().get_media(fileId=id_controle)
             bytes_controle = io.BytesIO()
@@ -169,11 +148,28 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             ws_fase1_leitura = wb_leitura['FASE 1']
             
             resultados_reais = {}
+            datas_jogos = {}
             for r in range(3, 75):
                 resultados_reais[r] = (ws_fase1_leitura[f'G{r}'].value, ws_fase1_leitura[f'I{r}'].value)
                 
+                # Coleta as datas reais dos jogos (Coluna C) para a Máquina do Tempo
+                val_data = ws_fase1_leitura[f'C{r}'].value
+                d_jogo = None
+                if isinstance(val_data, dt.datetime):
+                    d_jogo = val_data.date()
+                elif val_data:
+                    txt = str(val_data).strip()
+                    if "/" in txt:
+                        try: d_jogo = dt.date(2026, int(txt.split('/')[1]), int(txt.split('/')[0]))
+                        except: pass
+                datas_jogos[r] = d_jogo
+                
             ws_tabela_leitura = wb_leitura['TABELA']
             lista_ranking = []
+            
+            # Listas para guardar a simulação do passado
+            lista_anteontem = []
+            lista_ontem = []
             
             # PROCESSAR PLANILHAS
             for row_tabela in range(2, 101):
@@ -190,17 +186,78 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 id_part = mapa_arquivos[arquivo_palpite]
                 palpites = carregar_palpites_em_cache(id_part)
                 
-                pontos_totais = 0
+                pts_tot = 0
+                pts_ant = 0
+                pts_ont = 0
+                
                 for r in range(3, 75):
                     g_m_real, g_v_real = resultados_reais[r]
                     if g_m_real is None or g_v_real is None: continue
                     
                     p_casa, p_fora = palpites.get(r, (None, None))
-                    pontos_totais += calcular_pontos(g_m_real, g_v_real, p_casa, p_fora)
+                    pts = calcular_pontos(g_m_real, g_v_real, p_casa, p_fora)
+                    pts_tot += pts
                     
-                lista_ranking.append({'nome': nome, 'pontos': pontos_totais})
+                    d_jogo = datas_jogos.get(r)
+                    if d_jogo:
+                        if d_jogo <= anteontem_date: pts_ant += pts
+                        if d_jogo <= ontem_date: pts_ont += pts
+                        
+                lista_ranking.append({'nome': nome, 'pontos': pts_tot})
+                lista_anteontem.append({'nome': nome, 'pontos': pts_ant})
+                lista_ontem.append({'nome': nome, 'pontos': pts_ont})
                 
             wb_leitura.close()
+            
+            # ==================================================================
+            # O "TIME MACHINE" (RECONSTRUÇÃO EXCLUSIVA DO HISTÓRICO DE ONTEM)
+            # ==================================================================
+            if len(linha_do_tempo) < 2:
+                def ranquear(lista):
+                    lista.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
+                    pos_dict = {}
+                    pos_atual = 1
+                    pts_anteriores = None
+                    for idx, p in enumerate(lista):
+                        if p['pontos'] != pts_anteriores: pos_atual = idx + 1
+                        pts_anteriores = p['pontos']
+                        pos_dict[p['nome']] = pos_atual
+                    return pos_dict
+                
+                # Recriar as fotos passadas e injetar no JSON permanentemente
+                linha_do_tempo[anteontem_date.strftime('%Y-%m-%d')] = ranquear(lista_anteontem)
+                linha_do_tempo[ontem_date.strftime('%Y-%m-%d')] = ranquear(lista_ontem)
+                nova_foto_diaria = True # Força o update do JSON
+            # ==================================================================
+            
+            datas_passadas = sorted([d for d in linha_do_tempo.keys() if d < hoje_str])
+            pos_fim_ontem = linha_do_tempo[datas_passadas[-1]] if len(datas_passadas) >= 1 else {}
+            pos_inicio_ontem = linha_do_tempo[datas_passadas[-2]] if len(datas_passadas) >= 2 else pos_fim_ontem
+            data_ontem_str = datas_passadas[-1] if len(datas_passadas) >= 1 else None
+
+            # Cálculo de quem subiu e caiu ONDE IMPORTA (Ontem!)
+            var_ontem_cards = {}
+            for n, p_fin in pos_fim_ontem.items():
+                p_ini = pos_inicio_ontem.get(n, p_fin)
+                var_ontem_cards[n] = p_ini - p_fin
+                
+            m_subida = max(var_ontem_cards.values()) if var_ontem_cards else 0
+            m_queda = min(var_ontem_cards.values()) if var_ontem_cards else 0
+            
+            h_sub = [n for n, v in var_ontem_cards.items() if v == m_subida] if m_subida > 0 else []
+            v_que = [n for n, v in var_ontem_cards.items() if v == m_queda] if m_queda < 0 else []
+            
+            data_str_card = "Ontem"
+            if data_ontem_str:
+                dt_obj = dt.datetime.strptime(data_ontem_str, '%Y-%m-%d')
+                data_str_card = f"{dt_obj.day:02d}/{dt_obj.month:02d}"
+
+            st.session_state.resumo_ontem = {
+                "data_str": data_str_card,
+                "maior_subida": {"nomes": h_sub, "valor": m_subida},
+                "maior_queda": {"nomes": v_que, "valor": abs(m_queda)}
+            }
+
             lista_ranking.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
             
             posicao_atual = 1
@@ -223,7 +280,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     participante['dif'] = f"+{dif}" if dif > 0 else "="
                 else: participante['dif'] = "-"
 
-                # Variação da tabela (Fim de ontem vs Live Atual)
+                # Variação da Tabela Ao Vivo (Fim de Ontem vs Agora)
                 pos_antiga = pos_fim_ontem.get(participante['nome'], posicao_atual)
                 variacao = pos_antiga - posicao_atual
                 
@@ -233,7 +290,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
 
                 posicoes_para_json[participante['nome']] = posicao_atual
 
-            # SALVAR SÉRIE TEMPORAL NO JSON (UMA VEZ POR DIA)
+            # SALVAR SÉRIE TEMPORAL NO JSON
             if nova_foto_diaria:
                 linha_do_tempo[hoje_str] = posicoes_para_json
                 novo_historico = {"historico": linha_do_tempo}
@@ -302,11 +359,10 @@ with aba_ranking:
                 """, unsafe_allow_html=True)
                 
             with col_c2:
-                if resumo and resumo.get('data') and resumo['maior_subida']['nomes']:
-                    dt_obj = dt.datetime.strptime(resumo['data'], '%Y-%m-%d')
-                    data_str = f"{dt_obj.day:02d}/{dt_obj.month:02d}"
+                if resumo and resumo.get('maior_subida', {}).get('nomes'):
                     nomes_sub = ", ".join(resumo['maior_subida']['nomes'])
                     val_sub = resumo['maior_subida']['valor']
+                    data_str = resumo.get('data_str', 'Ontem')
                     st.markdown(f"""
                     <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #22C55E; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
                         <h5 style="color: #4ADE80; margin: 0 0 5px 0;">🚀 Maior Subida ({data_str})</h5>
@@ -317,16 +373,15 @@ with aba_ranking:
                     st.markdown("""
                     <div style="background: #0F172A; border-left: 4px solid #334155; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
                         <h5 style="color: #94A3B8; margin: 0 0 5px 0;">🚀 Maior Subida</h5>
-                        <p style="color: #64748B; margin: 0; font-size: 14px;">Aguardando histórico...</p>
+                        <p style="color: #64748B; margin: 0; font-size: 14px;">Aguardando jogos...</p>
                     </div>
                     """, unsafe_allow_html=True)
 
             with col_c3:
-                if resumo and resumo.get('data') and resumo['maior_queda']['nomes']:
-                    dt_obj = dt.datetime.strptime(resumo['data'], '%Y-%m-%d')
-                    data_str = f"{dt_obj.day:02d}/{dt_obj.month:02d}"
+                if resumo and resumo.get('maior_queda', {}).get('nomes'):
                     nomes_que = ", ".join(resumo['maior_queda']['nomes'])
                     val_que = resumo['maior_queda']['valor']
+                    data_str = resumo.get('data_str', 'Ontem')
                     st.markdown(f"""
                     <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #EF4444; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
                         <h5 style="color: #F87171; margin: 0 0 5px 0;">📉 Maior Queda ({data_str})</h5>
@@ -337,7 +392,7 @@ with aba_ranking:
                     st.markdown("""
                     <div style="background: #0F172A; border-left: 4px solid #334155; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
                         <h5 style="color: #94A3B8; margin: 0 0 5px 0;">📉 Maior Queda</h5>
-                        <p style="color: #64748B; margin: 0; font-size: 14px;">Aguardando histórico...</p>
+                        <p style="color: #64748B; margin: 0; font-size: 14px;">Aguardando jogos...</p>
                     </div>
                     """, unsafe_allow_html=True)
         # ----------------------------------------------
