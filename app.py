@@ -92,6 +92,7 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
 st.set_page_config(page_title="Bolão Copa 2026 (THE)", page_icon="⚽", layout="wide")
 
 if 'ranking_processado' not in st.session_state: st.session_state.ranking_processado = []
+if 'resumo_ontem' not in st.session_state: st.session_state.resumo_ontem = {}
 
 st.title("🏆 Apuração do Bolão da Copa 2026 (THE) - V2")
 st.write("Clique no botão abaixo para processar os palpites e atualizar o ranking em tempo real.")
@@ -108,9 +109,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado na pasta do Drive.")
                 st.stop()
                 
-            # ==================================================================
-            # 1. LER O NOVO BANCO DE DADOS DE HISTÓRICO (SÉRIES TEMPORAIS)
-            # ==================================================================
+            # --- MANIPULAÇÃO DE SÉRIES TEMPORAIS (JSON) ---
             fuso_br = dt.timezone(dt.timedelta(hours=-3))
             hoje_str = dt.datetime.now(fuso_br).strftime('%Y-%m-%d')
             dados_historico = {"historico": {}}
@@ -124,31 +123,39 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 while not baix_json.next_chunk()[1]: pass
                 bytes_json.seek(0)
                 try: 
-                    # Tenta ler o novo formato. Se for o formato velho, ele ignora e cria um novo.
                     conteudo_lido = json.loads(bytes_json.read().decode('utf-8'))
-                    if "historico" in conteudo_lido:
-                        dados_historico = conteudo_lido
+                    if "historico" in conteudo_lido: dados_historico = conteudo_lido
                 except: pass
             
             linha_do_tempo = dados_historico.get("historico", {})
             nova_foto_diaria = (hoje_str not in linha_do_tempo)
+            datas_passadas = sorted([d for d in linha_do_tempo.keys() if d < hoje_str])
             
-            # Descobrindo qual foi a data "de ontem" (a última foto tirada antes de hoje)
-            datas_ordenadas = sorted(linha_do_tempo.keys())
-            data_comparacao = None
+            # Snapshots para a tabela ao vivo (Fim de Ontem)
+            pos_fim_ontem = linha_do_tempo[datas_passadas[-1]] if len(datas_passadas) >= 1 else {}
+            # Snapshots para o Card de Ontem (Início de Ontem vs Fim de Ontem)
+            pos_inicio_ontem = linha_do_tempo[datas_passadas[-2]] if len(datas_passadas) >= 2 else pos_fim_ontem
             
-            if nova_foto_diaria and len(datas_ordenadas) > 0:
-                # Se ainda não tiramos a foto de hoje, comparamos a tabela atual com a última foto disponível (ontem)
-                data_comparacao = datas_ordenadas[-1]
-            elif not nova_foto_diaria and len(datas_ordenadas) > 1:
-                # Se já tiramos a foto de hoje (já tem histórico de hoje), comparamos com o dia anterior a ele
-                data_comparacao = datas_ordenadas[-2]
-            elif not nova_foto_diaria and len(datas_ordenadas) == 1:
-                 # Se só temos a foto de hoje, não há variação ainda
-                 data_comparacao = None
+            data_ontem_str = datas_passadas[-1] if len(datas_passadas) >= 1 else None
 
-            posicoes_antigas = linha_do_tempo.get(data_comparacao, {}) if data_comparacao else {}
-            # ==================================================================
+            # Cálculo exclusivo para os Cards de Destaque
+            var_ontem_cards = {}
+            for n, p_fin in pos_fim_ontem.items():
+                p_ini = pos_inicio_ontem.get(n, p_fin)
+                var_ontem_cards[n] = p_ini - p_fin # Valor positivo = subiu de posição
+                
+            m_subida = max(var_ontem_cards.values()) if var_ontem_cards else 0
+            m_queda = min(var_ontem_cards.values()) if var_ontem_cards else 0
+            
+            h_sub = [n for n, v in var_ontem_cards.items() if v == m_subida] if m_subida > 0 else []
+            v_que = [n for n, v in var_ontem_cards.items() if v == m_queda] if m_queda < 0 else []
+            
+            st.session_state.resumo_ontem = {
+                "data": data_ontem_str,
+                "maior_subida": {"nomes": h_sub, "valor": m_subida},
+                "maior_queda": {"nomes": v_que, "valor": abs(m_queda)}
+            }
+            # ----------------------------------------------
 
             # LER ARQUIVO DE CONTROLE (LIVE)
             id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
@@ -168,7 +175,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             ws_tabela_leitura = wb_leitura['TABELA']
             lista_ranking = []
             
-            # PROCESSAR PLANILHAS (COM CACHE)
+            # PROCESSAR PLANILHAS
             for row_tabela in range(2, 101):
                 celula_nome = ws_tabela_leitura[f'A{row_tabela}'].value
                 if celula_nome is None or str(celula_nome).strip() == "" or str(celula_nome).strip().lower() == "participante": continue
@@ -216,11 +223,8 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     participante['dif'] = f"+{dif}" if dif > 0 else "="
                 else: participante['dif'] = "-"
 
-                # ==============================================================
-                # CÁLCULO DE VARIAÇÃO USANDO O NOVO HISTÓRICO
-                # ==============================================================
-                # Se não tem posição antiga, ele mantém a variação neutra
-                pos_antiga = posicoes_antigas.get(participante['nome'], posicao_atual)
+                # Variação da tabela (Fim de ontem vs Live Atual)
+                pos_antiga = pos_fim_ontem.get(participante['nome'], posicao_atual)
                 variacao = pos_antiga - posicao_atual
                 
                 if variacao > 0: participante['var_html'] = f"<span style='color: #22C55E;'>▲ {variacao}</span>"
@@ -228,9 +232,8 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 else: participante['var_html'] = "<span style='color: #94A3B8;'>➖</span>"
 
                 posicoes_para_json[participante['nome']] = posicao_atual
-                # ==============================================================
 
-            # ATUALIZAR JSON DE HISTÓRICO (SÉRIE TEMPORAL)
+            # SALVAR SÉRIE TEMPORAL NO JSON (UMA VEZ POR DIA)
             if nova_foto_diaria:
                 linha_do_tempo[hoje_str] = posicoes_para_json
                 novo_historico = {"historico": linha_do_tempo}
@@ -267,7 +270,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             if nome_saida in mapa_arquivos: service.files().update(fileId=mapa_arquivos[nome_saida], media_body=media_upload).execute()
             else: service.files().create(body={'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}, media_body=media_upload).execute()
             
-            st.markdown("<div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px;'><strong>Tabela atualizada com sucesso no Google Drive!</strong></div>", unsafe_allow_html=True)
+            st.markdown("<div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px;'><strong>Tabela atualizada com sucesso!</strong></div>", unsafe_allow_html=True)
             
         except Exception as e: st.error(f"Ocorreu um erro no processamento: {e}")
 
@@ -282,16 +285,62 @@ with aba_ranking:
     if not st.session_state.ranking_processado: st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
     else:
         dados = st.session_state.ranking_processado
+        resumo = st.session_state.get('resumo_ontem', {})
         N = len(dados)
         
+        # --- CARDS DE RESUMO (LÍDER, SUBIDA, QUEDA) ---
         if dados:
             lider = dados[0]
-            st.markdown(f"""
-            <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #F59E0B; padding: 15px; border-radius: 6px; margin-bottom: 25px;">
-                <h4 style="color: #FBBF24; margin: 0 0 5px 0;">🏆 Líder Geral</h4>
-                <p style="color: #F8FAFC; margin: 0; font-size: 16px;"><strong>{lider['nome']}</strong> segue no topo da tabela com <strong>{lider['pontos']} pontos</strong>!</p>
-            </div>
-            """, unsafe_allow_html=True)
+            col_c1, col_c2, col_c3 = st.columns(3)
+            
+            with col_c1:
+                st.markdown(f"""
+                <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #F59E0B; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
+                    <h5 style="color: #FBBF24; margin: 0 0 5px 0;">🏆 Líder Geral</h5>
+                    <p style="color: #F8FAFC; margin: 0; font-size: 14px;"><strong>{lider['nome']}</strong> segue no topo com <strong>{lider['pontos']} pts</strong>!</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with col_c2:
+                if resumo and resumo.get('data') and resumo['maior_subida']['nomes']:
+                    dt_obj = dt.datetime.strptime(resumo['data'], '%Y-%m-%d')
+                    data_str = f"{dt_obj.day:02d}/{dt_obj.month:02d}"
+                    nomes_sub = ", ".join(resumo['maior_subida']['nomes'])
+                    val_sub = resumo['maior_subida']['valor']
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #22C55E; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
+                        <h5 style="color: #4ADE80; margin: 0 0 5px 0;">🚀 Maior Subida ({data_str})</h5>
+                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;"><strong>{nomes_sub}</strong> saltou <strong>+{val_sub} posições</strong></p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div style="background: #0F172A; border-left: 4px solid #334155; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
+                        <h5 style="color: #94A3B8; margin: 0 0 5px 0;">🚀 Maior Subida</h5>
+                        <p style="color: #64748B; margin: 0; font-size: 14px;">Aguardando histórico...</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            with col_c3:
+                if resumo and resumo.get('data') and resumo['maior_queda']['nomes']:
+                    dt_obj = dt.datetime.strptime(resumo['data'], '%Y-%m-%d')
+                    data_str = f"{dt_obj.day:02d}/{dt_obj.month:02d}"
+                    nomes_que = ", ".join(resumo['maior_queda']['nomes'])
+                    val_que = resumo['maior_queda']['valor']
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #EF4444; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
+                        <h5 style="color: #F87171; margin: 0 0 5px 0;">📉 Maior Queda ({data_str})</h5>
+                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;"><strong>{nomes_que}</strong> caiu <strong>-{val_que} posições</strong></p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div style="background: #0F172A; border-left: 4px solid #334155; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
+                        <h5 style="color: #94A3B8; margin: 0 0 5px 0;">📉 Maior Queda</h5>
+                        <p style="color: #64748B; margin: 0; font-size: 14px;">Aguardando histórico...</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        # ----------------------------------------------
 
         idx_prof = 5 if N >= 5 else N
         while idx_prof < N and dados[idx_prof]['pontos'] == dados[idx_prof - 1]['pontos']: idx_prof += 1
