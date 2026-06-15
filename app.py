@@ -46,36 +46,36 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     if posicoes_destaque is None:
         posicoes_destaque = []
         
-    html = f"""
-    <div style="text-align: center; margin-bottom: 20px; font-family: sans-serif;">
-        <h4 style="margin-bottom: 0px; color: #1f1f1f;">{titulo}</h4>
-        <p style="margin-top: 0px; font-size: 14px; font-style: italic; color: #555;">{subtitulo}</p>
-        <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 14px;">
-            <thead>
-                <tr style="background-color: #f0f2f6; border-bottom: 2px solid #ccc;">
-                    <th style="padding: 8px;">Pos</th>
-                    <th style="text-align: left; padding: 8px;">Nome</th>
-                    <th style="padding: 8px;">Pts</th>
-                </tr>
-            </thead>
-            <tbody>
-    """
+    # HTML sem indentação para evitar que o Streamlit transforme em bloco de código Markdown
+    html = f"""<div style="text-align: center; margin-bottom: 20px; font-family: sans-serif;">
+<h4 style="margin-bottom: 0px; color: #1f1f1f;">{titulo}</h4>
+<p style="margin-top: 0px; font-size: 14px; font-style: italic; color: #555;">{subtitulo}</p>
+<table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 14px;">
+<thead style="background-color: #f0f2f6; border-bottom: 2px solid #ccc;">
+<tr>
+<th style="padding: 8px;">Pos</th>
+<th style="text-align: left; padding: 8px;">Nome</th>
+<th style="padding: 8px;">Pts</th>
+</tr>
+</thead>
+<tbody>"""
+
     for p in participantes:
         pos_str = p['posicao'].replace("º Lugar", "").strip()
         bg_color = cor_destaque if (pos_str.isdigit() and int(pos_str) in posicoes_destaque) else "transparent"
         
         html += f"""
-                <tr style="background-color: {bg_color}; border-bottom: 1px solid #eee;">
-                    <td style="padding: 6px; font-weight: bold;">{p['posicao'].replace(' Lugar', '')}</td>
-                    <td style="text-align: left; padding: 6px;">{p['nome']}</td>
-                    <td style="padding: 6px; font-weight: bold;">{p['pontos']}</td>
-                </tr>
-        """
+<tr style="background-color: {bg_color}; border-bottom: 1px solid #eee;">
+<td style="padding: 6px; font-weight: bold;">{p['posicao'].replace(' Lugar', '')}</td>
+<td style="text-align: left; padding: 6px;">{p['nome']}</td>
+<td style="padding: 6px; font-weight: bold;">{p['pontos']}</td>
+</tr>"""
+
     html += """
-            </tbody>
-        </table>
-    </div>
-    """
+</tbody>
+</table>
+</div>"""
+
     return html
 
 # ==============================================================================
