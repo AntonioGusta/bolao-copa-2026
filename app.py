@@ -26,13 +26,12 @@ def obter_serviço_drive():
     return build('drive', 'v3', credentials=creds)
 
 def calcular_pontos(g_m_real, g_v_real, g_m_palpite, g_v_palpite):
-    if g_m_real is None or g_v_real is None or g_m_palpite is None or g_v_palpite is None:
-        return 0
+    if g_m_real is None or g_v_real is None or g_m_palpite is None or g_v_palpite is None: return 0
     try:
         g_m_real, g_v_real = int(g_m_real), int(g_v_real)
         g_m_palpite, g_v_palpite = int(g_m_palpite), int(g_v_palpite)
-    except (ValueError, TypeError):
-        return 0
+    except (ValueError, TypeError): return 0
+    
     res_real = 1 if g_m_real > g_v_real else (-1 if g_m_real < g_v_real else 0)
     res_palpite = 1 if g_m_palpite > g_v_palpite else (-1 if g_m_palpite < g_v_palpite else 0)
     if res_real != res_palpite: return 0
@@ -43,12 +42,15 @@ def calcular_pontos(g_m_real, g_v_real, g_m_palpite, g_v_palpite):
 
 def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posicoes_destaque=None):
     if posicoes_destaque is None: posicoes_destaque = []
+    
     html = f"<div style='background: #0F172A; padding: 15px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.35); text-align: center; margin-bottom: 20px; font-family: sans-serif;'>"
     html += f"<h4 style='margin-bottom: 0px; color: #F8FAFC;'>{titulo}</h4>"
     html += f"<p style='margin-top: 0px; font-size: 14px; font-style: italic; color: #CBD5E1;'>{subtitulo}</p>"
+    
     html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
-    html += "<tr><th style='padding: 8px;'>Pos</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px;'>Pts</th></tr>"
+    # Adicionada a coluna Dif aqui no cabeçalho
+    html += "<tr><th style='padding: 8px;'>Pos</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px;'>Pts</th><th style='padding: 8px; color:#94A3B8;'>Dif</th></tr>"
     html += "</thead><tbody>"
 
     for p in participantes:
@@ -58,8 +60,11 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
         
         html += f"<tr style='background-color: {bg_color}; border-bottom: 1px solid #334155;'>"
         html += f"<td style='padding: 6px; font-weight: bold;'>{p['posicao'].replace(' Lugar', '')}</td>"
-        html += f"<td style='text-align: left; padding: 6px;'>{p['nome']}</td>"
+        # Usando o nome_exibicao que contém as medalhas
+        html += f"<td style='text-align: left; padding: 6px;'>{p.get('nome_exibicao', p['nome'])}</td>"
         html += f"<td style='padding: 6px; font-weight: bold;'>{p['pontos']}</td>"
+        # Inserindo a diferença calculada
+        html += f"<td style='padding: 6px; font-size: 12px; color:#94A3B8;'>{p.get('dif', '-')}</td>"
         html += "</tr>"
 
     html += "</tbody></table></div>"
@@ -108,8 +113,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             
             for row_tabela in range(2, 101):
                 celula_nome = ws_tabela_leitura[f'A{row_tabela}'].value
-                if celula_nome is None or str(celula_nome).strip() == "" or str(celula_nome).strip().lower() == "participante":
-                    continue
+                if celula_nome is None or str(celula_nome).strip() == "" or str(celula_nome).strip().lower() == "participante": continue
                     
                 nome = str(celula_nome).strip()
                 arquivo_palpite = f"{nome}.xlsx"
@@ -143,6 +147,31 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             
             posicao_atual = 1
             pontos_anteriores = None
+            
+            # --- NOVIDADE: Lógica de Posições, Medalhas e Distância (Dif) ---
+            for idx, participante in enumerate(lista_ranking):
+                if participante['pontos'] != pontos_anteriores:
+                    posicao_atual = idx + 1
+                pontos_anteriores = participante['pontos']
+                participante['posicao'] = f"{posicao_atual}º Lugar"
+                
+                # Inserindo Medalhas Baseado na Posição
+                emoji = ""
+                if posicao_atual == 1: emoji = "🥇 "
+                elif posicao_atual == 2: emoji = "🥈 "
+                elif posicao_atual == 3: emoji = "🥉 "
+                participante['nome_exibicao'] = f"{emoji}{participante['nome']}"
+                
+                # Calculando a Diferença para o cara de baixo
+                if idx < len(lista_ranking) - 1:
+                    pts_below = lista_ranking[idx+1]['pontos']
+                    dif = participante['pontos'] - pts_below
+                    participante['dif'] = f"+{dif}" if dif > 0 else "="
+                else:
+                    participante['dif'] = "-"
+            # ----------------------------------------------------------------
+            
+            # Gravando no Excel
             bytes_controle.seek(0)
             wb_gravar = openpyxl.load_workbook(bytes_controle, data_only=False)
             if 'Dados Pessoais' in wb_gravar.sheetnames: wb_gravar.remove(wb_gravar['Dados Pessoais'])
@@ -155,11 +184,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             
             for idx, participante in enumerate(lista_ranking):
                 linha_atual = 2 + idx
-                if participante['pontos'] != pontos_anteriores:
-                    posicao_atual = idx + 1
-                pontos_anteriores = participante['pontos']
-                participante['posicao'] = f"{posicao_atual}º Lugar"
-                
                 ws_tabela_gravar[f'A{linha_atual}'].value = participante['nome']
                 ws_tabela_gravar[f'B{linha_atual}'].value = participante['pontos']
                 ws_tabela_gravar[f'C{linha_atual}'].value = participante['posicao']
@@ -198,6 +222,17 @@ with aba_ranking:
         dados = st.session_state.ranking_processado
         N = len(dados)
         
+        # --- NOVIDADE: Card de Resumo do Líder Geral ---
+        if dados:
+            lider = dados[0]
+            st.markdown(f"""
+            <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #F59E0B; padding: 15px; border-radius: 6px; margin-bottom: 25px;">
+                <h4 style="color: #FBBF24; margin: 0 0 5px 0;">🏆 Líder Geral</h4>
+                <p style="color: #F8FAFC; margin: 0; font-size: 16px;"><strong>{lider['nome']}</strong> segue no topo da tabela com <strong>{lider['pontos']} pontos</strong>!</p>
+            </div>
+            """, unsafe_allow_html=True)
+        # -----------------------------------------------
+
         idx_prof = 5 if N >= 5 else N
         while idx_prof < N and dados[idx_prof]['pontos'] == dados[idx_prof - 1]['pontos']: idx_prof += 1
             
@@ -226,7 +261,7 @@ with aba_ranking:
                 posicoes_lanterna = [int(p['posicao'].replace("º Lugar", "").strip()) for p in lanterna]
                 st.markdown(gerar_tabela_html(lanterna, "Prêmio Espírito Coletivo", "- Bastava Apostar ao Contrário -", "#991B1B", posicoes_lanterna), unsafe_allow_html=True)
 
-# --- ABA 2: PALPITES DO DIA (NOVO DESIGN GAMIFICADO) ---
+# --- ABA 2: PALPITES DO DIA ---
 with aba_palpites:
     st.subheader("👀 Espiar Palpites da Rodada")
     
@@ -264,7 +299,6 @@ with aba_palpites:
                 bytes_c.seek(0)
                 wb_leitura = openpyxl.load_workbook(bytes_c, data_only=True)
                 
-                # 1. PEGAR JOGOS REAIS DO DIA
                 ws_fase1 = wb_leitura['FASE 1']
                 jogos_reais_do_dia = {}
                 for r in range(3, 75):
@@ -283,7 +317,6 @@ with aba_palpites:
                             'time_fora': str(ws_fase1[f'J{r}'].value).strip()
                         }
 
-                # 2. RENDERIZAR RESULTADOS REAIS NO TOPO
                 if jogos_reais_do_dia:
                     st.markdown("### 🏟️ Resultados Oficiais")
                     cols_reais = st.columns(len(jogos_reais_do_dia))
@@ -299,7 +332,6 @@ with aba_palpites:
                             </div>
                             """, unsafe_allow_html=True)
 
-                # 3. PEGAR PARTICIPANTES
                 ws_tabela = wb_leitura['TABELA']
                 participantes = []
                 for r in range(2, 101):
@@ -308,14 +340,12 @@ with aba_palpites:
                         participantes.append(str(nome).strip())
                 wb_leitura.close()
                 
-                # Dicionário rápido para buscar a posição geral do session_state
                 dict_ranking = {p['nome']: p for p in st.session_state.ranking_processado} if st.session_state.ranking_processado else {}
                 
                 dados_painel = []
                 melhor_pontuacao_dia = -1
                 herois_do_dia = []
 
-                # 4. PROCESSAR PALPITES DOS PARTICIPANTES
                 for nome in participantes:
                     arq_palpite = f"{nome}.xlsx"
                     if arq_palpite in mapa_arquivos:
@@ -342,14 +372,13 @@ with aba_palpites:
                             try: p_f_str = str(int(float(palp_f))) if palp_f is not None else "-"
                             except: p_f_str = "-"
                             
-                            # Logica de Cores (Verde/Azul/Vermelho/Cinza)
-                            cor_borda = "#334155" # Cinza padrão (jogo não aconteceu)
+                            cor_borda = "#334155" 
                             if jogo_real['g_casa'] is not None and jogo_real['g_fora'] is not None:
                                 pts = calcular_pontos(jogo_real['g_casa'], jogo_real['g_fora'], palp_c, palp_f)
                                 pontos_do_dia += pts
-                                if pts == 7: cor_borda = "#166534" # Verde (Na mosca)
-                                elif pts in [2, 3, 4]: cor_borda = "#2563EB" # Azul (Acertou lado)
-                                else: cor_borda = "#991B1B" # Vermelho (Errou tudo)
+                                if pts == 7: cor_borda = "#166534" 
+                                elif pts in [2, 3, 4]: cor_borda = "#2563EB" 
+                                else: cor_borda = "#991B1B" 
                                 
                             cards_html += f"""
                             <div style="background:#0F172A; border:1px solid {cor_borda}; border-radius:6px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
@@ -360,7 +389,6 @@ with aba_palpites:
                             """
                         wb_p.close()
                         
-                        # Definir informações do cabeçalho
                         info = dict_ranking.get(nome, {'pontos': '?', 'posicao': '-'})
                         pos_str = str(info['posicao']).replace("º Lugar", "").strip()
                         
@@ -384,7 +412,6 @@ with aba_palpites:
                         elif pontos_do_dia == melhor_pontuacao_dia and pontos_do_dia > 0:
                             herois_do_dia.append(nome)
 
-                # 5. DESTAQUE DO DIA (GAMIFICAÇÃO)
                 if jogos_reais_do_dia and melhor_pontuacao_dia > 0:
                     st.markdown("---")
                     st.markdown("### 🔥 Destaque da Rodada")
@@ -396,10 +423,8 @@ with aba_palpites:
                     </div>
                     """, unsafe_allow_html=True)
                 
-                # 6. RENDERIZAR GRID DE CARTÕES (ST.COLUMNS + ST.EXPANDER)
                 st.markdown("### 📋 Palpites da Galera")
-                
-                cols_grid = st.columns(3) # Grid de 3 colunas
+                cols_grid = st.columns(3)
                 for idx, painel in enumerate(dados_painel):
                     with cols_grid[idx % 3]:
                         with st.expander(painel['cabecalho']):
