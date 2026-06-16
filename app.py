@@ -425,7 +425,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 if "-graficos" in pesq_bruta:
                     modo_grafico = True
                     pesq_bruta = pesq_bruta.replace("-graficos", "").strip()
-                # ==============================================================
                 
                 if "/" in pesq_bruta:
                     try: pesq_limpa = f"{int(pesq_bruta.split('/')[0])}/{int(pesq_bruta.split('/')[1])}"
@@ -475,7 +474,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 melhor_pontuacao_dia = -1
                 herois_do_dia = []
                 
-                # Armazena os palpites de todo mundo agrupados por jogo (para o modo gráfico)
                 palpites_por_jogo = {r: [] for r in jogos_reais_do_dia.keys()}
 
                 for nome in participantes:
@@ -541,7 +539,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
         if st.session_state.busca_ativa:
             if modo_grafico:
                 # ==============================================================
-                # MODO ADMIN: GERAÇÃO DO REPORT GAMIFICADO EM TEXTO (FLAT HTML)
+                # MODO ADMIN: GERAÇÃO DO REPORT GAMIFICADO LADO A LADO
                 # ==============================================================
                 st.divider()
                 st.markdown("## 📊 Relatório Oficial da Comunidade")
@@ -557,6 +555,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     t_c = jogo['time_casa'].upper()
                     t_f = jogo['time_fora'].upper()
                     
+                    # Cálculos das métricas
                     v_casa = sum(1 for c, f in palpites_jogo if c > f)
                     v_emp  = sum(1 for c, f in palpites_jogo if c == f)
                     v_fora = sum(1 for c, f in palpites_jogo if c < f)
@@ -565,9 +564,10 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     pct_e = int(round((v_emp / N) * 100))
                     pct_f = int(round((v_fora / N) * 100))
                     
-                    bar_c = "█" * int((pct_c / 100) * 16)
-                    bar_e = "█" * int((pct_e / 100) * 16)
-                    bar_f = "█" * int((pct_f / 100) * 16)
+                    # Barras redimensionadas para caberem nas colunas lado a lado
+                    bar_c = "█" * int((pct_c / 100) * 10)
+                    bar_e = "█" * int((pct_e / 100) * 10)
+                    bar_f = "█" * int((pct_f / 100) * 10)
                     
                     placares_str = [f"{c}x{f}" for c, f in palpites_jogo]
                     top_placares = Counter(placares_str).most_common(5)
@@ -580,48 +580,45 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     bar_mc = "█" * int((med_c / max_med) * 8)
                     bar_mf = "█" * int((med_f / max_med) * 8)
                     
-                    max_pct = max(pct_c, pct_e, pct_f)
-                    if pct_c == max_pct: fav = t_c
-                    elif pct_f == max_pct: fav = t_f
-                    else: fav = "Empate"
-                    
-                    if max_pct >= 60:
-                        consenso_icone = "🔥 Consenso alto"
-                        consenso_txt = f"{max_pct}% apostaram na vitória de {fav}"
-                    elif max_pct <= 45:
-                        consenso_icone = "⚡ Jogo equilibrado"
-                        consenso_txt = f"A comunidade está dividida ({pct_c}% a {pct_f}%)"
-                    else:
-                        consenso_icone = "🤔 Leve favoritismo"
-                        consenso_txt = f"{max_pct}% acreditam em {fav}"
-
-                    # CONSTRUÇÃO DO HTML ACHATADO PARA EVITAR BUGS DE MARKDOWN
+                    # CONSTRUÇÃO DO HTML (GRID FLEXBOX 3 COLUNAS)
                     html_card = f"<div style='background:#0F172A; border:1px solid #1E293B; border-radius:12px; padding:20px; margin-bottom:25px; color:#F8FAFC; font-family: sans-serif; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);'>"
-                    html_card += f"<h3 style='text-align:center; color:#E2E8F0; letter-spacing: 2px; margin-top:0; font-size:18px;'>{t_c} x {t_f}</h3>"
-                    html_card += "<hr style='border: 0; border-top: 1px solid #1E293B; margin: 15px 0;'>"
-                    html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:10px;'>Quem vence?</p>"
-                    html_card += f"<div style='display: flex; margin-bottom: 6px; font-size:14px;'><div style='width: 90px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#22C55E;'>{bar_c}</div><div style='width: 40px; text-align: left;'>{pct_c}%</div></div>"
-                    html_card += f"<div style='display: flex; margin-bottom: 6px; font-size:14px;'><div style='width: 90px; text-align: right; margin-right: 12px;'>Empate</div><div style='flex-grow: 1; color:#64748B;'>{bar_e}</div><div style='width: 40px; text-align: left;'>{pct_e}%</div></div>"
-                    html_card += f"<div style='display: flex; margin-bottom: 6px; font-size:14px;'><div style='width: 90px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#3B82F6;'>{bar_f}</div><div style='width: 40px; text-align: left;'>{pct_f}%</div></div>"
-                    html_card += "<hr style='border: 0; border-top: 1px solid #1E293B; margin: 20px 0;'>"
-                    html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:10px;'>Placares mais apostados</p>"
                     
-                    for placar, count in top_placares:
-                        bar_len = int((count / max_placar_count) * 12)
-                        bar_p = "█" * max(1, bar_len)
-                        html_card += f"<div style='display: flex; margin-bottom: 6px;'><div style='width: 40px; text-align: right; margin-right: 12px; color:#F8FAFC;'>{placar}</div><div style='flex-grow: 1; color:#F59E0B;'>{bar_p}</div><div style='width: 30px; text-align: left; color:#94A3B8;'>{count}</div></div>"
-                        
-                    html_card += "<hr style='border: 0; border-top: 1px solid #1E293B; margin: 20px 0;'>"
+                    # Cabeçalho Centralizado
+                    html_card += f"<h3 style='text-align:center; color:#E2E8F0; letter-spacing: 2px; margin-top:0; margin-bottom:10px; font-size:18px;'>{t_c} x {t_f}</h3>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; text-align:center; margin-bottom:5px;'>🏆 Palpite oficial do bolão</p>"
-                    html_card += f"<p style='font-size:22px; font-weight:bold; color:#F8FAFC; text-align:center; margin:0;'>{jogo['time_casa']} <span style='color:#F59E0B;'>{placar_oficial}</span> {jogo['time_fora']}</p>"
-                    html_card += "<hr style='border: 0; border-top: 1px solid #1E293B; margin: 20px 0;'>"
-                    html_card += f"<p style='font-size:16px; font-weight:bold; margin-bottom:4px;'>{consenso_icone}</p>"
-                    html_card += f"<p style='font-size:14px; color:#94A3B8; margin-top:0;'>{consenso_txt}</p>"
-                    html_card += "<hr style='border: 0; border-top: 1px solid #1E293B; margin: 20px 0;'>"
-                    html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:10px;'>⚽ Média de gols esperada</p>"
-                    html_card += f"<div style='display: flex; margin-bottom: 6px; font-size:14px;'><div style='width: 90px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='width: 100px; color:#94A3B8;'>{bar_mc}</div><div style='flex-grow: 1; text-align: left; font-weight:bold;'>{med_c:.1f}</div></div>"
-                    html_card += f"<div style='display: flex; margin-bottom: 6px; font-size:14px;'><div style='width: 90px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='width: 100px; color:#94A3B8;'>{bar_mf}</div><div style='flex-grow: 1; text-align: left; font-weight:bold;'>{med_f:.1f}</div></div>"
+                    html_card += f"<p style='font-size:22px; font-weight:bold; color:#F8FAFC; text-align:center; margin:0 0 15px 0;'>{jogo['time_casa']} <span style='color:#F59E0B;'>{placar_oficial}</span> {jogo['time_fora']}</p>"
+                    html_card += "<hr style='border: 0; border-top: 1px solid #1E293B; margin: 15px 0 20px 0;'>"
+                    
+                    # Início do Flex Container para as 3 colunas
+                    html_card += "<div style='display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px;'>"
+                    
+                    # --- Coluna 1: Quem Vence ---
+                    html_card += "<div style='flex: 1; min-width: 200px;'>"
+                    html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Quem vence?</p>"
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#22C55E;'>{bar_c}</div><div style='width: 35px; text-align: right; margin-left: 8px;'>{pct_c}%</div></div>"
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>Empate</div><div style='flex-grow: 1; color:#64748B;'>{bar_e}</div><div style='width: 35px; text-align: right; margin-left: 8px;'>{pct_e}%</div></div>"
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#3B82F6;'>{bar_f}</div><div style='width: 35px; text-align: right; margin-left: 8px;'>{pct_f}%</div></div>"
                     html_card += "</div>"
+                    
+                    # --- Coluna 2: Placares ---
+                    html_card += "<div style='flex: 1; min-width: 200px;'>"
+                    html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Placares mais apostados</p>"
+                    for placar, count in top_placares:
+                        bar_len = int((count / max_placar_count) * 8)
+                        bar_p = "█" * max(1, bar_len)
+                        html_card += f"<div style='display: flex; margin-bottom: 8px;'><div style='width: 40px; text-align: right; margin-right: 12px; color:#F8FAFC;'>{placar}</div><div style='flex-grow: 1; color:#F59E0B;'>{bar_p}</div><div style='width: 30px; text-align: left; color:#94A3B8; margin-left: 8px;'>{count}</div></div>"
+                    html_card += "</div>"
+                    
+                    # --- Coluna 3: Média ---
+                    html_card += "<div style='flex: 1; min-width: 200px;'>"
+                    html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Média de gols</p>"
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#94A3B8;'>{bar_mc}</div><div style='width: 30px; text-align: left; font-weight:bold; margin-left: 8px;'>{med_c:.1f}</div></div>"
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#94A3B8;'>{bar_mf}</div><div style='width: 30px; text-align: left; font-weight:bold; margin-left: 8px;'>{med_f:.1f}</div></div>"
+                    html_card += "</div>"
+
+                    # Fechamento
+                    html_card += "</div>" # fecha flex
+                    html_card += "</div>" # fecha card
                     
                     st.markdown(html_card, unsafe_allow_html=True)
             
