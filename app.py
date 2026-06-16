@@ -452,7 +452,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
 
     # Agora a renderização depende da memória, não apenas do clique do botão
     if st.session_state.busca_ativa:
-        with st.spinner("Analisando palpites (Utilizando cache ultra-rápido)..."):
+        with st.spinner("Analisando palpites..."):
             try:
                 service = obter_serviço_drive()
                 pesq = st.session_state.data_pesquisada.strip()
