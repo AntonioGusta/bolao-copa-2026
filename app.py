@@ -1,6 +1,5 @@
 import os
 import io
-import json
 import datetime as dt
 import streamlit as st
 import openpyxl
@@ -108,35 +107,8 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             if 'Arquivo_de_controle.xlsx' not in mapa_arquivos:
                 st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado na pasta do Drive.")
                 st.stop()
-                
-            # ==================================================================
-            # 1. PREPARANDO O BANCO DE HISTÓRICO
-            # ==================================================================
-            fuso_br = dt.timezone(dt.timedelta(hours=-3))
-            hoje_date = dt.datetime.now(fuso_br).date()
-            ontem_date = hoje_date - dt.timedelta(days=1)
-            anteontem_date = hoje_date - dt.timedelta(days=2)
-            
-            hoje_str = hoje_date.strftime('%Y-%m-%d')
-            dados_historico = {"historico": {}}
-            
-            nome_json = "historico_bolao.json"
-            if nome_json in mapa_arquivos:
-                id_json = mapa_arquivos[nome_json]
-                req_json = service.files().get_media(fileId=id_json)
-                bytes_json = io.BytesIO()
-                baix_json = MediaIoBaseDownload(bytes_json, req_json)
-                while not baix_json.next_chunk()[1]: pass
-                bytes_json.seek(0)
-                try: 
-                    conteudo_lido = json.loads(bytes_json.read().decode('utf-8'))
-                    if "historico" in conteudo_lido: dados_historico = conteudo_lido
-                except: pass
-            
-            linha_do_tempo = dados_historico.get("historico", {})
-            nova_foto_diaria = (hoje_str not in linha_do_tempo)
 
-            # LER ARQUIVO DE CONTROLE
+            # LER ARQUIVO DE CONTROLE (LIVE E DATAS)
             id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
             requisicao = service.files().get_media(fileId=id_controle)
             bytes_controle = io.BytesIO()
@@ -147,12 +119,18 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             wb_leitura = openpyxl.load_workbook(bytes_controle, data_only=True)
             ws_fase1_leitura = wb_leitura['FASE 1']
             
+            fuso_br = dt.timezone(dt.timedelta(hours=-3))
+            hoje_date = dt.datetime.now(fuso_br).date()
+            ontem_date = hoje_date - dt.timedelta(days=1)
+            anteontem_date = hoje_date - dt.timedelta(days=2)
+            
             resultados_reais = {}
             datas_jogos = {}
+            
+            # Coletando Placar e Data exata de cada jogo
             for r in range(3, 75):
                 resultados_reais[r] = (ws_fase1_leitura[f'G{r}'].value, ws_fase1_leitura[f'I{r}'].value)
                 
-                # Coleta as datas reais dos jogos (Coluna C) para a Máquina do Tempo
                 val_data = ws_fase1_leitura[f'C{r}'].value
                 d_jogo = None
                 if isinstance(val_data, dt.datetime):
@@ -160,18 +138,18 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 elif val_data:
                     txt = str(val_data).strip()
                     if "/" in txt:
-                        try: d_jogo = dt.date(2026, int(txt.split('/')[1]), int(txt.split('/')[0]))
+                        try:
+                            d_jogo = dt.date(2026, int(txt.split('/')[1]), int(txt.split('/')[0]))
                         except: pass
                 datas_jogos[r] = d_jogo
                 
             ws_tabela_leitura = wb_leitura['TABELA']
+            
             lista_ranking = []
-            
-            # Listas para guardar a simulação do passado
-            lista_anteontem = []
             lista_ontem = []
+            lista_anteontem = []
             
-            # PROCESSAR PLANILHAS
+            # PROCESSAR PLANILHAS VIA CACHE DA MÁQUINA DO TEMPO
             for row_tabela in range(2, 101):
                 celula_nome = ws_tabela_leitura[f'A{row_tabela}'].value
                 if celula_nome is None or str(celula_nome).strip() == "" or str(celula_nome).strip().lower() == "participante": continue
@@ -186,9 +164,9 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 id_part = mapa_arquivos[arquivo_palpite]
                 palpites = carregar_palpites_em_cache(id_part)
                 
-                pts_tot = 0
-                pts_ant = 0
+                pts_live = 0
                 pts_ont = 0
+                pts_ant = 0
                 
                 for r in range(3, 75):
                     g_m_real, g_v_real = resultados_reais[r]
@@ -196,50 +174,46 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     
                     p_casa, p_fora = palpites.get(r, (None, None))
                     pts = calcular_pontos(g_m_real, g_v_real, p_casa, p_fora)
-                    pts_tot += pts
+                    
+                    pts_live += pts
                     
                     d_jogo = datas_jogos.get(r)
                     if d_jogo:
-                        if d_jogo <= anteontem_date: pts_ant += pts
                         if d_jogo <= ontem_date: pts_ont += pts
+                        if d_jogo <= anteontem_date: pts_ant += pts
+                    else:
+                        # Se não tem data na planilha, assume que é jogo finalizado
+                        pts_ont += pts
+                        pts_ant += pts
                         
-                lista_ranking.append({'nome': nome, 'pontos': pts_tot})
-                lista_anteontem.append({'nome': nome, 'pontos': pts_ant})
+                lista_ranking.append({'nome': nome, 'pontos': pts_live})
                 lista_ontem.append({'nome': nome, 'pontos': pts_ont})
+                lista_anteontem.append({'nome': nome, 'pontos': pts_ant})
                 
             wb_leitura.close()
             
             # ==================================================================
-            # O "TIME MACHINE" (RECONSTRUÇÃO EXCLUSIVA DO HISTÓRICO DE ONTEM)
+            # CALCULAR RANKS PASSADOS ON THE FLY (SEM JSON)
             # ==================================================================
-            if len(linha_do_tempo) < 2:
-                def ranquear(lista):
-                    lista.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
-                    pos_dict = {}
-                    pos_atual = 1
-                    pts_anteriores = None
-                    for idx, p in enumerate(lista):
-                        if p['pontos'] != pts_anteriores: pos_atual = idx + 1
-                        pts_anteriores = p['pontos']
-                        pos_dict[p['nome']] = pos_atual
-                    return pos_dict
-                
-                # Recriar as fotos passadas e injetar no JSON permanentemente
-                linha_do_tempo[anteontem_date.strftime('%Y-%m-%d')] = ranquear(lista_anteontem)
-                linha_do_tempo[ontem_date.strftime('%Y-%m-%d')] = ranquear(lista_ontem)
-                nova_foto_diaria = True # Força o update do JSON
-            # ==================================================================
-            
-            datas_passadas = sorted([d for d in linha_do_tempo.keys() if d < hoje_str])
-            pos_fim_ontem = linha_do_tempo[datas_passadas[-1]] if len(datas_passadas) >= 1 else {}
-            pos_inicio_ontem = linha_do_tempo[datas_passadas[-2]] if len(datas_passadas) >= 2 else pos_fim_ontem
-            data_ontem_str = datas_passadas[-1] if len(datas_passadas) >= 1 else None
+            def ranquear_passado(lista):
+                lista.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
+                pos_dict = {}
+                posicao = 1
+                ultimos_pts = None
+                for idx, p in enumerate(lista):
+                    if p['pontos'] != ultimos_pts: posicao = idx + 1
+                    ultimos_pts = p['pontos']
+                    pos_dict[p['nome']] = posicao
+                return pos_dict
 
-            # Cálculo de quem subiu e caiu ONDE IMPORTA (Ontem!)
+            ranks_ontem = ranquear_passado(lista_ontem)
+            ranks_anteontem = ranquear_passado(lista_anteontem)
+
+            # Cálculo exclusivo para os Cards de Destaque (Ontem vs Anteontem)
             var_ontem_cards = {}
-            for n, p_fin in pos_fim_ontem.items():
-                p_ini = pos_inicio_ontem.get(n, p_fin)
-                var_ontem_cards[n] = p_ini - p_fin
+            for n, pos_ont in ranks_ontem.items():
+                pos_ant = ranks_anteontem.get(n, pos_ont)
+                var_ontem_cards[n] = pos_ant - pos_ont
                 
             m_subida = max(var_ontem_cards.values()) if var_ontem_cards else 0
             m_queda = min(var_ontem_cards.values()) if var_ontem_cards else 0
@@ -247,22 +221,18 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             h_sub = [n for n, v in var_ontem_cards.items() if v == m_subida] if m_subida > 0 else []
             v_que = [n for n, v in var_ontem_cards.items() if v == m_queda] if m_queda < 0 else []
             
-            data_str_card = "Ontem"
-            if data_ontem_str:
-                dt_obj = dt.datetime.strptime(data_ontem_str, '%Y-%m-%d')
-                data_str_card = f"{dt_obj.day:02d}/{dt_obj.month:02d}"
-
             st.session_state.resumo_ontem = {
-                "data_str": data_str_card,
+                "data_str": f"{ontem_date.day:02d}/{ontem_date.month:02d}",
                 "maior_subida": {"nomes": h_sub, "valor": m_subida},
                 "maior_queda": {"nomes": v_que, "valor": abs(m_queda)}
             }
+            # ==================================================================
 
+            # RANQUEAR E FORMATAR LISTA LIVE
             lista_ranking.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
             
             posicao_atual = 1
             pontos_anteriores = None
-            posicoes_para_json = {}
             
             for idx, participante in enumerate(lista_ranking):
                 if participante['pontos'] != pontos_anteriores: posicao_atual = idx + 1
@@ -280,26 +250,13 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     participante['dif'] = f"+{dif}" if dif > 0 else "="
                 else: participante['dif'] = "-"
 
-                # Variação da Tabela Ao Vivo (Fim de Ontem vs Agora)
-                pos_antiga = pos_fim_ontem.get(participante['nome'], posicao_atual)
+                # Variação da tabela ao vivo (Live Atual vs Final de Ontem)
+                pos_antiga = ranks_ontem.get(participante['nome'], posicao_atual)
                 variacao = pos_antiga - posicao_atual
                 
                 if variacao > 0: participante['var_html'] = f"<span style='color: #22C55E;'>▲ {variacao}</span>"
                 elif variacao < 0: participante['var_html'] = f"<span style='color: #EF4444;'>▼ {abs(variacao)}</span>"
                 else: participante['var_html'] = "<span style='color: #94A3B8;'>➖</span>"
-
-                posicoes_para_json[participante['nome']] = posicao_atual
-
-            # SALVAR SÉRIE TEMPORAL NO JSON
-            if nova_foto_diaria:
-                linha_do_tempo[hoje_str] = posicoes_para_json
-                novo_historico = {"historico": linha_do_tempo}
-                
-                json_bytes = io.BytesIO(json.dumps(novo_historico).encode('utf-8'))
-                media_json = MediaIoBaseUpload(json_bytes, mimetype='application/json', resumable=True)
-                
-                if nome_json in mapa_arquivos: service.files().update(fileId=mapa_arquivos[nome_json], media_body=media_json).execute()
-                else: service.files().create(body={'name': nome_json, 'parents': [ID_PASTA_DRIVE]}, media_body=media_json).execute()
 
             # GRAVAR EXCEL
             bytes_controle.seek(0)
@@ -336,7 +293,6 @@ st.divider()
 # ==============================================================================
 # NAVEGAÇÃO SEGURA (CONTORNO DO BUG DE ABAS DO STREAMLIT)
 # ==============================================================================
-# Usamos um radio button horizontal. Ele funciona como abas, mas é 100% à prova de falhas.
 aba_selecionada = st.radio(
     "Navegação:",
     ["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada"],
@@ -353,6 +309,7 @@ if aba_selecionada == "🏆 Classificação e Resenha":
         resumo = st.session_state.get('resumo_ontem', {})
         N = len(dados)
         
+        # --- CARDS DE RESUMO (LÍDER, SUBIDA, QUEDA) ---
         if dados:
             lider = dados[0]
             col_c1, col_c2, col_c3 = st.columns(3)
@@ -366,42 +323,46 @@ if aba_selecionada == "🏆 Classificação e Resenha":
                 """, unsafe_allow_html=True)
                 
             with col_c2:
-                if resumo and resumo.get('maior_subida', {}).get('nomes'):
-                    nomes_sub = ", ".join(resumo['maior_subida']['nomes'])
-                    val_sub = resumo['maior_subida']['valor']
-                    data_str = resumo.get('data_str', 'Ontem')
+                val_sub = resumo.get('maior_subida', {}).get('valor', 0)
+                data_str = resumo.get('data_str', 'Ontem')
+                nomes_sub = resumo.get('maior_subida', {}).get('nomes', [])
+                
+                if val_sub > 0 and nomes_sub:
+                    n_str = ", ".join(nomes_sub)
                     st.markdown(f"""
                     <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #22C55E; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
                         <h5 style="color: #4ADE80; margin: 0 0 5px 0;">🚀 Maior Subida ({data_str})</h5>
-                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;"><strong>{nomes_sub}</strong> saltou <strong>+{val_sub} posições</strong></p>
+                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;"><strong>{n_str}</strong> saltou <strong>+{val_sub} posições</strong></p>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    st.markdown("""
+                    st.markdown(f"""
                     <div style="background: #0F172A; border-left: 4px solid #334155; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
-                        <h5 style="color: #94A3B8; margin: 0 0 5px 0;">🚀 Maior Subida</h5>
-                        <p style="color: #64748B; margin: 0; font-size: 14px;">Aguardando jogos...</p>
+                        <h5 style="color: #94A3B8; margin: 0 0 5px 0;">🚀 Maior Subida ({data_str})</h5>
+                        <p style="color: #64748B; margin: 0; font-size: 14px;">Nenhuma alteração na tabela.</p>
                     </div>
                     """, unsafe_allow_html=True)
 
             with col_c3:
-                if resumo and resumo.get('maior_queda', {}).get('nomes'):
-                    nomes_que = ", ".join(resumo['maior_queda']['nomes'])
-                    val_que = resumo['maior_queda']['valor']
-                    data_str = resumo.get('data_str', 'Ontem')
+                val_que = resumo.get('maior_queda', {}).get('valor', 0)
+                nomes_que = resumo.get('maior_queda', {}).get('nomes', [])
+                
+                if val_que > 0 and nomes_que:
+                    n_str = ", ".join(nomes_que)
                     st.markdown(f"""
                     <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #EF4444; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
                         <h5 style="color: #F87171; margin: 0 0 5px 0;">📉 Maior Queda ({data_str})</h5>
-                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;"><strong>{nomes_que}</strong> caiu <strong>-{val_que} posições</strong></p>
+                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;"><strong>{n_str}</strong> caiu <strong>-{val_que} posições</strong></p>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    st.markdown("""
+                    st.markdown(f"""
                     <div style="background: #0F172A; border-left: 4px solid #334155; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
-                        <h5 style="color: #94A3B8; margin: 0 0 5px 0;">📉 Maior Queda</h5>
-                        <p style="color: #64748B; margin: 0; font-size: 14px;">Aguardando jogos...</p>
+                        <h5 style="color: #94A3B8; margin: 0 0 5px 0;">📉 Maior Queda ({data_str})</h5>
+                        <p style="color: #64748B; margin: 0; font-size: 14px;">Nenhuma alteração na tabela.</p>
                     </div>
                     """, unsafe_allow_html=True)
+        # ----------------------------------------------
 
         idx_prof = 5 if N >= 5 else N
         while idx_prof < N and dados[idx_prof]['pontos'] == dados[idx_prof - 1]['pontos']: idx_prof += 1
@@ -438,7 +399,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
     hoje = dt.datetime.now(fuso_br)
     data_padrao = f"{hoje.day}/{hoje.month}"
     
-    # Inicializa a memória da busca para os resultados não sumirem
     if 'busca_ativa' not in st.session_state:
         st.session_state.busca_ativa = False
     if 'data_pesquisada' not in st.session_state:
@@ -450,9 +410,8 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
         st.session_state.busca_ativa = True
         st.session_state.data_pesquisada = data_pesquisa
 
-    # Agora a renderização depende da memória, não apenas do clique do botão
     if st.session_state.busca_ativa:
-        with st.spinner("Analisando palpites..."):
+        with st.spinner("Analisando palpites (Utilizando cache ultra-rápido)..."):
             try:
                 service = obter_serviço_drive()
                 pesq = st.session_state.data_pesquisada.strip()
