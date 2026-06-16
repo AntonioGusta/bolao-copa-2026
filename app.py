@@ -404,7 +404,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
     if 'data_pesquisada' not in st.session_state:
         st.session_state.data_pesquisada = ""
 
-    data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Para gráficos admin, use 'data-graficos'. Ex: 15/6-graficos):", value=data_padrao)
+    data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver", value=data_padrao)
     
     if st.button("🔍 Buscar Rodada", type="secondary"):
         st.session_state.busca_ativa = True
