@@ -411,7 +411,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
         st.session_state.data_pesquisada = data_pesquisa
 
     if st.session_state.busca_ativa:
-        with st.spinner("Analisando palpites (Utilizando cache ultra-rápido)..."):
+        with st.spinner("Analisando palpites..."):
             try:
                 service = obter_serviço_drive()
                 pesq = st.session_state.data_pesquisada.strip()
