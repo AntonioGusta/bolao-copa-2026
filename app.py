@@ -595,9 +595,9 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     # --- Coluna 1: Quem Vence ---
                     html_card += "<div style='flex: 1; min-width: 200px;'>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Quem vence?</p>"
-                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#22C55E;'>{bar_c}</div><div style='width: 35px; text-align: right; margin-left: 8px;'>{pct_c}%</div></div>"
-                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>Empate</div><div style='flex-grow: 1; color:#64748B;'>{bar_e}</div><div style='width: 35px; text-align: right; margin-left: 8px;'>{pct_e}%</div></div>"
-                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#3B82F6;'>{bar_f}</div><div style='width: 35px; text-align: right; margin-left: 8px;'>{pct_f}%</div></div>"
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#22C55E;'>{bar_c}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_c}%</div></div>"
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>Empate</div><div style='flex-grow: 1; color:#64748B;'>{bar_e}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_e}%</div></div>"
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#3B82F6;'>{bar_f}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_f}%</div></div>"
                     html_card += "</div>"
                     
                     # --- Coluna 2: Placares ---
