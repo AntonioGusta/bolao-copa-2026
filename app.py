@@ -404,7 +404,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
     if 'data_pesquisada' not in st.session_state:
         st.session_state.data_pesquisada = ""
 
-    data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Ex: 12/6):", value=data_padrao)
+    data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Para gráficos admin, use 'data-graficos'. Ex: 15/6-graficos):", value=data_padrao)
     
     if st.button("🔍 Buscar Rodada", type="secondary"):
         st.session_state.busca_ativa = True
@@ -413,12 +413,24 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
     if st.session_state.busca_ativa:
         with st.spinner("Analisando palpites..."):
             try:
+                from collections import Counter
                 service = obter_serviço_drive()
-                pesq = st.session_state.data_pesquisada.strip()
-                if "/" in pesq:
-                    try: pesq_limpa = f"{int(pesq.split('/')[0])}/{int(pesq.split('/')[1])}"
-                    except: pesq_limpa = pesq
-                else: pesq_limpa = pesq
+                
+                # ==============================================================
+                # MODO ADMIN (EASTER EGG DE GRÁFICOS)
+                # ==============================================================
+                pesq_bruta = st.session_state.data_pesquisada.strip().lower()
+                modo_grafico = False
+                
+                if "-graficos" in pesq_bruta:
+                    modo_grafico = True
+                    pesq_bruta = pesq_bruta.replace("-graficos", "").strip()
+                # ==============================================================
+                
+                if "/" in pesq_bruta:
+                    try: pesq_limpa = f"{int(pesq_bruta.split('/')[0])}/{int(pesq_bruta.split('/')[1])}"
+                    except: pesq_limpa = pesq_bruta
+                else: pesq_limpa = pesq_bruta
 
                 query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
                 resultados = service.files().list(q=query, fields="files(id, name)").execute()
@@ -450,21 +462,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                             'time_fora': str(ws_fase1[f'J{r}'].value).strip()
                         }
 
-                if jogos_reais_do_dia:
-                    st.markdown("### 🏟️ Resultados Oficiais")
-                    cols_reais = st.columns(len(jogos_reais_do_dia))
-                    for idx, (linha, jogo) in enumerate(jogos_reais_do_dia.items()):
-                        gc = int(float(jogo['g_casa'])) if jogo['g_casa'] is not None else "-"
-                        gf = int(float(jogo['g_fora'])) if jogo['g_fora'] is not None else "-"
-                        with cols_reais[idx % len(cols_reais)]:
-                            st.markdown(f"""
-                            <div style="background:#1E293B; border:1px solid #334155; border-radius:8px; padding:12px; text-align:center; margin-bottom:15px;">
-                                <div style="font-size: 16px; font-weight: bold; color: #F8FAFC;">
-                                    {jogo['time_casa']} &nbsp;<span style="color:#60A5FA;">{gc} x {gf}</span>&nbsp; {jogo['time_fora']}
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-
                 ws_tabela = wb_leitura['TABELA']
                 participantes = []
                 for r in range(2, 101):
@@ -477,6 +474,9 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 dados_painel = []
                 melhor_pontuacao_dia = -1
                 herois_do_dia = []
+                
+                # Armazena os palpites de todo mundo agrupados por jogo (para o modo gráfico)
+                palpites_por_jogo = {r: [] for r in jogos_reais_do_dia.keys()}
 
                 for nome in participantes:
                     arq_palpite = f"{nome}.xlsx"
@@ -489,6 +489,13 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         
                         for r, jogo_real in jogos_reais_do_dia.items():
                             palp_c, palp_f = palpites_usuario.get(r, (None, None))
+                            
+                            # Registra o palpite para a estatística agregada se for válido
+                            if palp_c is not None and palp_f is not None:
+                                try:
+                                    pc_int, pf_int = int(float(palp_c)), int(float(palp_f))
+                                    palpites_por_jogo[r].append((pc_int, pf_int))
+                                except: pass
                             
                             try: p_c_str = str(int(float(palp_c))) if palp_c is not None else "-"
                             except: p_c_str = "-"
@@ -520,7 +527,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         elif pos_str == '3': emoji = "🥉"
                         
                         cabecalho = f"{emoji} {nome} | {info['pontos']} pts | {info['posicao']}"
-                        
                         dados_painel.append({'cabecalho': cabecalho, 'cards_html': cards_html, 'pontos_dia': pontos_do_dia})
                         
                         if pontos_do_dia > melhor_pontuacao_dia:
@@ -529,13 +535,157 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         elif pontos_do_dia == melhor_pontuacao_dia and pontos_do_dia > 0:
                             herois_do_dia.append(nome)
 
+                # ==============================================================
+                # MODO ADMIN: GERAÇÃO DO REPORT GAMIFICADO EM TEXTO (FLEXBOX HTML)
+                # ==============================================================
+                if modo_grafico:
+                    st.divider()
+                    st.markdown("## 📊 Relatório Oficial da Comunidade")
+                    
+                    if not jogos_reais_do_dia:
+                        st.warning("Nenhum jogo encontrado para esta data.")
+                    
+                    for r, jogo in jogos_reais_do_dia.items():
+                        palpites_jogo = palpites_por_jogo[r]
+                        if not palpites_jogo: continue
+                        
+                        N = len(palpites_jogo)
+                        t_c = jogo['time_casa'].upper()
+                        t_f = jogo['time_fora'].upper()
+                        
+                        # 1. Vitórias, Empates e Derrotas
+                        v_casa = sum(1 for c, f in palpites_jogo if c > f)
+                        v_emp  = sum(1 for c, f in palpites_jogo if c == f)
+                        v_fora = sum(1 for c, f in palpites_jogo if c < f)
+                        
+                        pct_c = int(round((v_casa / N) * 100))
+                        pct_e = int(round((v_emp / N) * 100))
+                        pct_f = int(round((v_fora / N) * 100))
+                        
+                        bar_c = "█" * int((pct_c / 100) * 16)
+                        bar_e = "█" * int((pct_e / 100) * 16)
+                        bar_f = "█" * int((pct_f / 100) * 16)
+                        
+                        # 2. Placares Mais Apostados
+                        placares_str = [f"{c}x{f}" for c, f in palpites_jogo]
+                        top_placares = Counter(placares_str).most_common(5)
+                        max_placar_count = top_placares[0][1] if top_placares else 1
+                        placar_oficial = top_placares[0][0].replace("x", " x ") if top_placares else "0 x 0"
+                        
+                        html_placares = ""
+                        for placar, count in top_placares:
+                            bar_len = int((count / max_placar_count) * 12)
+                            bar_p = "█" * max(1, bar_len)
+                            html_placares += f"""
+                            <div style="display: flex; margin-bottom: 6px;">
+                                <div style="width: 40px; text-align: right; margin-right: 12px; color:#F8FAFC;">{placar}</div>
+                                <div style="flex-grow: 1; color:#F59E0B;">{bar_p}</div>
+                                <div style="width: 30px; text-align: left; color:#94A3B8;">{count}</div>
+                            </div>
+                            """
+                            
+                        # 3. Média de Gols Esperada
+                        med_c = sum(c for c, f in palpites_jogo) / N
+                        med_f = sum(f for c, f in palpites_jogo) / N
+                        max_med = max(med_c, med_f, 1)
+                        bar_mc = "█" * int((med_c / max_med) * 8)
+                        bar_mf = "█" * int((med_f / max_med) * 8)
+                        
+                        # 4. Consenso do Jogo
+                        max_pct = max(pct_c, pct_e, pct_f)
+                        if pct_c == max_pct: fav = t_c
+                        elif pct_f == max_pct: fav = t_f
+                        else: fav = "Empate"
+                        
+                        if max_pct >= 60:
+                            consenso_icone = "🔥 Consenso alto"
+                            consenso_txt = f"{max_pct}% apostaram na vitória de {fav}"
+                        elif max_pct <= 45:
+                            consenso_icone = "⚡ Jogo equilibrado"
+                            consenso_txt = f"A comunidade está dividida ({pct_c}% a {pct_f}%)"
+                        else:
+                            consenso_icone = "🤔 Leve favoritismo"
+                            consenso_txt = f"{max_pct}% acreditam em {fav}"
+
+                        # RENDERIZAÇÃO DO CARD DO JOGO
+                        st.markdown(f"""
+                        <div style="background:#0F172A; border:1px solid #1E293B; border-radius:12px; padding:20px; margin-bottom:25px; color:#F8FAFC; font-family: sans-serif; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);">
+                            <h3 style="text-align:center; color:#E2E8F0; letter-spacing: 2px; margin-top:0; font-size:18px;">{t_c} x {t_f}</h3>
+                            <hr style="border: 0; border-top: 1px solid #1E293B; margin: 15px 0;">
+                            
+                            <p style="color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:10px;">Quem vence?</p>
+                            <div style="display: flex; margin-bottom: 6px; font-size:14px;">
+                                <div style="width: 90px; text-align: right; margin-right: 12px;">{jogo['time_casa']}</div>
+                                <div style="flex-grow: 1; color:#22C55E;">{bar_c}</div>
+                                <div style="width: 40px; text-align: left;">{pct_c}%</div>
+                            </div>
+                            <div style="display: flex; margin-bottom: 6px; font-size:14px;">
+                                <div style="width: 90px; text-align: right; margin-right: 12px;">Empate</div>
+                                <div style="flex-grow: 1; color:#64748B;">{bar_e}</div>
+                                <div style="width: 40px; text-align: left;">{pct_e}%</div>
+                            </div>
+                            <div style="display: flex; margin-bottom: 6px; font-size:14px;">
+                                <div style="width: 90px; text-align: right; margin-right: 12px;">{jogo['time_fora']}</div>
+                                <div style="flex-grow: 1; color:#3B82F6;">{bar_f}</div>
+                                <div style="width: 40px; text-align: left;">{pct_f}%</div>
+                            </div>
+
+                            <hr style="border: 0; border-top: 1px solid #1E293B; margin: 20px 0;">
+                            
+                            <p style="color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:10px;">Placares mais apostados</p>
+                            {html_placares}
+                            
+                            <hr style="border: 0; border-top: 1px solid #1E293B; margin: 20px 0;">
+                            
+                            <p style="color:#94A3B8; font-size:12px; text-transform:uppercase; text-align:center; margin-bottom:5px;">🏆 Palpite oficial do bolão</p>
+                            <p style="font-size:22px; font-weight:bold; color:#F8FAFC; text-align:center; margin:0;">{jogo['time_casa']} <span style="color:#F59E0B;">{placar_oficial}</span> {jogo['time_fora']}</p>
+                            
+                            <hr style="border: 0; border-top: 1px solid #1E293B; margin: 20px 0;">
+                            
+                            <p style="font-size:16px; font-weight:bold; margin-bottom:4px;">{consenso_icone}</p>
+                            <p style="font-size:14px; color:#94A3B8; margin-top:0;">{consenso_txt}</p>
+
+                            <hr style="border: 0; border-top: 1px solid #1E293B; margin: 20px 0;">
+                            
+                            <p style="color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:10px;">⚽ Média de gols esperada</p>
+                            <div style="display: flex; margin-bottom: 6px; font-size:14px;">
+                                <div style="width: 90px; text-align: right; margin-right: 12px;">{jogo['time_casa']}</div>
+                                <div style="width: 100px; color:#94A3B8;">{bar_mc}</div>
+                                <div style="flex-grow: 1; text-align: left; font-weight:bold;">{med_c:.1f}</div>
+                            </div>
+                            <div style="display: flex; margin-bottom: 6px; font-size:14px;">
+                                <div style="width: 90px; text-align: right; margin-right: 12px;">{jogo['time_fora']}</div>
+                                <div style="width: 100px; color:#94A3B8;">{bar_mf}</div>
+                                <div style="flex-grow: 1; text-align: left; font-weight:bold;">{med_f:.1f}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    st.stop() # Interrompe a execução para não renderizar a visão comum abaixo
+                # ==============================================================
+
+                # VISAO PADRÃO (PARA OS USUÁRIOS COMUNS)
+                if jogos_reais_do_dia:
+                    st.markdown("### 🏟️ Resultados Oficiais")
+                    cols_reais = st.columns(len(jogos_reais_do_dia))
+                    for idx, (linha, jogo) in enumerate(jogos_reais_do_dia.items()):
+                        gc = int(float(jogo['g_casa'])) if jogo['g_casa'] is not None else "-"
+                        gf = int(float(jogo['g_fora'])) if jogo['g_fora'] is not None else "-"
+                        with cols_reais[idx % len(cols_reais)]:
+                            st.markdown(f"""
+                            <div style="background:#1E293B; border:1px solid #334155; border-radius:8px; padding:12px; text-align:center; margin-bottom:15px;">
+                                <div style="font-size: 16px; font-weight: bold; color: #F8FAFC;">
+                                    {jogo['time_casa']} &nbsp;<span style="color:#60A5FA;">{gc} x {gf}</span>&nbsp; {jogo['time_fora']}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
                 if jogos_reais_do_dia and melhor_pontuacao_dia > 0:
                     st.markdown("---")
                     st.markdown("### 🔥 Destaque da Rodada")
                     st.markdown(f"""
                     <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #F59E0B; padding: 15px; border-radius: 6px; margin-bottom: 25px;">
                         <h4 style="color: #FBBF24; margin: 0 0 5px 0;">{", ".join(herois_do_dia)}</h4>
-                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;">Mito da rodada somando impressionantes <strong>{melhor_pontuacao_dia} pontos</strong> só nos jogos pesquisados!</p>
+                        <p style="color: #F8FAFC; margin: 0; font-size: 14px;">Mito da rodada somando impressionantes <strong>{melhor_pontuacao_dia} pontos</strong> só nos jogos de hoje!</p>
                     </div>
                     """, unsafe_allow_html=True)
                 
