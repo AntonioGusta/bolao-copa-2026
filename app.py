@@ -303,7 +303,7 @@ aba_selecionada = st.radio(
 # --- TELA 1: RANKING ESTILIZADO ---
 if aba_selecionada == "🏆 Classificação e Resenha":
     if not st.session_state.ranking_processado: 
-        st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
+        st.info("👆 Clique no botão vermelho lá em cima para buscar os dados.")
     else:
         dados = st.session_state.ranking_processado
         resumo = st.session_state.get('resumo_ontem', {})
