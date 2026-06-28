@@ -508,7 +508,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 is_mata_mata = False
                 if dia_pesq and mes_pesq:
                     # Se for julho (7) em diante, ou final de junho (28, 29, 30)
-                    if mes_pesq > 8 or (mes_pesq == 7 and dia_pesq >= 28):
+                    if mes_pesq > 6 or (mes_pesq == 6 and dia_pesq >= 28):
                         is_mata_mata = True
 
                 query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
