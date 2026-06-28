@@ -64,9 +64,9 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     html += f"<h4 style='margin-bottom: 0px; color: #F8FAFC;'>{titulo}</h4>"
     html += f"<p style='margin-top: 0px; font-size: 14px; font-style: italic; color: #CBD5E1;'>{subtitulo}</p>"
     
-    html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; color: #F8FAFC; margin-top: 15px;'>"
+    html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
-    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px;'>Pts</th><th style='padding: 8px; color:#94A3B8;'>Dif</th></tr>"
+    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Fase Grupos</th><th style='padding: 8px; color:#94A3B8;'>Pré Oitavas</th><th style='padding: 8px; font-size: 15px;'>Total</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
     html += "</thead><tbody>"
 
     for p in participantes:
@@ -78,8 +78,12 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
         html += f"<td style='padding: 6px; font-weight: bold;'>{p['posicao'].replace(' Lugar', '')}</td>"
         html += f"<td style='padding: 6px; font-size: 13px;'>{p.get('var_html', '➖')}</td>"
         html += f"<td style='text-align: left; padding: 6px;'>{p.get('nome_exibicao', p['nome'])}</td>"
-        html += f"<td style='padding: 6px; font-weight: bold;'>{p['pontos']}</td>"
-        html += f"<td style='padding: 6px; font-size: 12px; color:#94A3B8;'>{p.get('dif', '-')}</td>"
+        
+        html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_grupos', 0)}</td>"
+        html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_pre_oitavas', 0)}</td>"
+        html += f"<td style='padding: 6px; font-weight: bold; font-size: 15px; color:#F59E0B;'>{p['pontos']}</td>"
+        
+        html += f"<td style='padding: 6px; font-size: 12px; color:#64748B;'>{p.get('dif', '-')}</td>"
         html += "</tr>"
 
     html += "</tbody></table></div>"
@@ -158,7 +162,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 arquivo_palpite = f"{nome}.xlsx"
                 
                 if arquivo_palpite not in mapa_arquivos:
-                    lista_ranking.append({'nome': nome, 'pontos': 0})
+                    lista_ranking.append({'nome': nome, 'pontos': 0, 'pts_grupos': 0, 'pts_pre_oitavas': 0})
                     continue
                     
                 id_part = mapa_arquivos[arquivo_palpite]
@@ -186,9 +190,23 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                         pts_ont += pts
                         pts_ant += pts
                         
-                lista_ranking.append({'nome': nome, 'pontos': pts_live})
+                # ==============================================================
+                # NOVA ENGENHARIA DE PONTUAÇÃO (PREPARADA PARA O MATA-MATA)
+                # ==============================================================
+                pts_grupos = pts_live
+                pts_pre_oitavas = 0 # Valor inicial para os testes
+                pts_total_live = pts_grupos + pts_pre_oitavas
+                
+                lista_ranking.append({
+                    'nome': nome, 
+                    'pontos': pts_total_live, 
+                    'pts_grupos': pts_grupos,
+                    'pts_pre_oitavas': pts_pre_oitavas
+                })
+                
                 lista_ontem.append({'nome': nome, 'pontos': pts_ont})
                 lista_anteontem.append({'nome': nome, 'pontos': pts_ant})
+                # ==============================================================
                 
             wb_leitura.close()
             
@@ -258,7 +276,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 elif variacao < 0: participante['var_html'] = f"<span style='color: #EF4444;'>▼ {abs(variacao)}</span>"
                 else: participante['var_html'] = "<span style='color: #94A3B8;'>➖</span>"
 
-            # GRAVAR EXCEL
+            # GRAVAR EXCEL (PROTEGIDO COMO AMBIENTE DE TESTES)
             bytes_controle.seek(0)
             wb_gravar = openpyxl.load_workbook(bytes_controle, data_only=False)
             if 'Dados Pessoais' in wb_gravar.sheetnames: wb_gravar.remove(wb_gravar['Dados Pessoais'])
@@ -279,12 +297,12 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             arquivo_saida_bytes.seek(0)
             wb_gravar.close()
             
-            nome_saida = 'BOLÃO DA COPA DO MUNDO 2026 (THE).xlsx'
+            nome_saida = 'BOLÃO DA COPA DO MUNDO 2026-TESTE.xlsx'
             media_upload = MediaIoBaseUpload(arquivo_saida_bytes, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
             if nome_saida in mapa_arquivos: service.files().update(fileId=mapa_arquivos[nome_saida], media_body=media_upload).execute()
             else: service.files().create(body={'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}, media_body=media_upload).execute()
             
-            st.markdown("<div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px;'><strong>Tabela atualizada com sucesso!</strong></div>", unsafe_allow_html=True)
+            st.markdown("<div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px;'><strong>Tabela atualizada com sucesso no ambiente de testes!</strong></div>", unsafe_allow_html=True)
             
         except Exception as e: st.error(f"Ocorreu um erro no processamento: {e}")
 
@@ -303,7 +321,7 @@ aba_selecionada = st.radio(
 # --- TELA 1: RANKING ESTILIZADO ---
 if aba_selecionada == "🏆 Classificação e Resenha":
     if not st.session_state.ranking_processado: 
-        st.info("👆 Clique no botão vermelho lá em cima para buscar os dados.")
+        st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
     else:
         dados = st.session_state.ranking_processado
         resumo = st.session_state.get('resumo_ontem', {})
