@@ -35,10 +35,23 @@ def carregar_palpites_em_cache(file_id):
     bytes_io.seek(0)
     
     wb = openpyxl.load_workbook(bytes_io, data_only=True)
-    ws = wb['FASE 1']
-    palpites = {}
-    for r in range(3, 75):
-        palpites[r] = (ws[f'G{r}'].value, ws[f'I{r}'].value)
+    palpites = {'fase1': {}, 'fase2': {}}
+    
+    # Carrega a Fase de Grupos
+    if 'FASE 1' in wb.sheetnames:
+        ws1 = wb['FASE 1']
+        for r in range(3, 75):
+            palpites['fase1'][r] = (ws1[f'G{r}'].value, ws1[f'I{r}'].value)
+            
+    # Carrega o Mata-Mata (Pré-Oitavas em diante)
+    nome_aba_fase2 = 'FASE 2, 3, 4, SEMI & FINAL'
+    if nome_aba_fase2 in wb.sheetnames:
+        ws2 = wb[nome_aba_fase2]
+        # Varrendo até a linha 100 para garantir que pega todos os jogos do mata-mata
+        for r in range(3, 100):
+            # Colunas da Fase 2: Gols Casa = E, Gols Fora = G
+            palpites['fase2'][r] = (ws2[f'E{r}'].value, ws2[f'G{r}'].value)
+            
     wb.close()
     return palpites
 
@@ -94,6 +107,22 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
 # ==============================================================================
 st.set_page_config(page_title="Bolão Copa 2026 (THE)", page_icon="⚽", layout="wide")
 
+# CSS para pintar o botão primary de Azul Claro
+st.markdown("""
+<style>
+button[kind="primary"] {
+    background-color: #38BDF8 !important; /* Azul claro */
+    color: #0F172A !important;
+    border-color: #38BDF8 !important;
+    font-weight: bold;
+}
+button[kind="primary"]:hover {
+    background-color: #0EA5E9 !important; /* Azul um pouco mais escuro no hover */
+    color: #ffffff !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 if 'ranking_processado' not in st.session_state: st.session_state.ranking_processado = []
 if 'resumo_ontem' not in st.session_state: st.session_state.resumo_ontem = {}
 
@@ -112,7 +141,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado na pasta do Drive.")
                 st.stop()
 
-            # LER ARQUIVO DE CONTROLE (LIVE E DATAS)
+            # LER ARQUIVO DE CONTROLE
             id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
             requisicao = service.files().get_media(fileId=id_controle)
             bytes_controle = io.BytesIO()
@@ -121,39 +150,57 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 
             bytes_controle.seek(0)
             wb_leitura = openpyxl.load_workbook(bytes_controle, data_only=True)
-            ws_fase1_leitura = wb_leitura['FASE 1']
             
             fuso_br = dt.timezone(dt.timedelta(hours=-3))
             hoje_date = dt.datetime.now(fuso_br).date()
             ontem_date = hoje_date - dt.timedelta(days=1)
             anteontem_date = hoje_date - dt.timedelta(days=2)
             
-            resultados_reais = {}
-            datas_jogos = {}
-            
-            # Coletando Placar e Data exata de cada jogo
+            # --- COLETAR GABARITO FASE 1 ---
+            ws_fase1_leitura = wb_leitura['FASE 1']
+            resultados_reais_f1 = {}
+            datas_jogos_f1 = {}
             for r in range(3, 75):
-                resultados_reais[r] = (ws_fase1_leitura[f'G{r}'].value, ws_fase1_leitura[f'I{r}'].value)
+                resultados_reais_f1[r] = (ws_fase1_leitura[f'G{r}'].value, ws_fase1_leitura[f'I{r}'].value)
                 
                 val_data = ws_fase1_leitura[f'C{r}'].value
                 d_jogo = None
-                if isinstance(val_data, dt.datetime):
-                    d_jogo = val_data.date()
+                if isinstance(val_data, dt.datetime): d_jogo = val_data.date()
                 elif val_data:
                     txt = str(val_data).strip()
                     if "/" in txt:
-                        try:
-                            d_jogo = dt.date(2026, int(txt.split('/')[1]), int(txt.split('/')[0]))
+                        try: d_jogo = dt.date(2026, int(txt.split('/')[1]), int(txt.split('/')[0]))
                         except: pass
-                datas_jogos[r] = d_jogo
-                
+                datas_jogos_f1[r] = d_jogo
+
+            # --- COLETAR GABARITO MATA-MATA (FASE 2) ---
+            nome_aba_fase2 = 'FASE 2, 3, 4, SEMI & FINAL'
+            resultados_reais_f2 = {}
+            datas_jogos_f2 = {}
+            if nome_aba_fase2 in wb_leitura.sheetnames:
+                ws_fase2_leitura = wb_leitura[nome_aba_fase2]
+                for r in range(3, 100):
+                    # Só avalia a linha se tiver algum nome de time verdadeiro no controle
+                    nome_casa = ws_fase2_leitura[f'D{r}'].value
+                    if nome_casa is not None and str(nome_casa).strip() != "":
+                        resultados_reais_f2[r] = (ws_fase2_leitura[f'E{r}'].value, ws_fase2_leitura[f'G{r}'].value)
+                        
+                        val_data = ws_fase2_leitura[f'C{r}'].value
+                        d_jogo = None
+                        if isinstance(val_data, dt.datetime): d_jogo = val_data.date()
+                        elif val_data:
+                            txt = str(val_data).strip()
+                            if "/" in txt:
+                                try: d_jogo = dt.date(2026, int(txt.split('/')[1]), int(txt.split('/')[0]))
+                                except: pass
+                        datas_jogos_f2[r] = d_jogo
+
             ws_tabela_leitura = wb_leitura['TABELA']
-            
             lista_ranking = []
             lista_ontem = []
             lista_anteontem = []
             
-            # PROCESSAR PLANILHAS VIA CACHE DA MÁQUINA DO TEMPO
+            # PROCESSAR PLANILHAS
             for row_tabela in range(2, 101):
                 celula_nome = ws_tabela_leitura[f'A{row_tabela}'].value
                 if celula_nome is None or str(celula_nome).strip() == "" or str(celula_nome).strip().lower() == "participante": continue
@@ -168,33 +215,43 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 id_part = mapa_arquivos[arquivo_palpite]
                 palpites = carregar_palpites_em_cache(id_part)
                 
-                pts_live = 0
+                pts_grupos = 0
+                pts_pre_oitavas = 0
                 pts_ont = 0
                 pts_ant = 0
                 
-                for r in range(3, 75):
-                    g_m_real, g_v_real = resultados_reais[r]
+                # Pontuação Fase 1
+                for r, (g_m_real, g_v_real) in resultados_reais_f1.items():
                     if g_m_real is None or g_v_real is None: continue
                     
-                    p_casa, p_fora = palpites.get(r, (None, None))
+                    p_casa, p_fora = palpites['fase1'].get(r, (None, None))
                     pts = calcular_pontos(g_m_real, g_v_real, p_casa, p_fora)
+                    pts_grupos += pts
                     
-                    pts_live += pts
-                    
-                    d_jogo = datas_jogos.get(r)
+                    d_jogo = datas_jogos_f1.get(r)
                     if d_jogo:
                         if d_jogo <= ontem_date: pts_ont += pts
                         if d_jogo <= anteontem_date: pts_ant += pts
                     else:
-                        # Se não tem data na planilha, assume que é jogo finalizado
+                        pts_ont += pts
+                        pts_ant += pts
+
+                # Pontuação Mata-Mata
+                for r, (g_m_real, g_v_real) in resultados_reais_f2.items():
+                    if g_m_real is None or g_v_real is None: continue
+                    
+                    p_casa, p_fora = palpites['fase2'].get(r, (None, None))
+                    pts = calcular_pontos(g_m_real, g_v_real, p_casa, p_fora)
+                    pts_pre_oitavas += pts
+                    
+                    d_jogo = datas_jogos_f2.get(r)
+                    if d_jogo:
+                        if d_jogo <= ontem_date: pts_ont += pts
+                        if d_jogo <= anteontem_date: pts_ant += pts
+                    else:
                         pts_ont += pts
                         pts_ant += pts
                         
-                # ==============================================================
-                # NOVA ENGENHARIA DE PONTUAÇÃO (PREPARADA PARA O MATA-MATA)
-                # ==============================================================
-                pts_grupos = pts_live
-                pts_pre_oitavas = 0 # Valor inicial para os testes
                 pts_total_live = pts_grupos + pts_pre_oitavas
                 
                 lista_ranking.append({
@@ -206,7 +263,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 
                 lista_ontem.append({'nome': nome, 'pontos': pts_ont})
                 lista_anteontem.append({'nome': nome, 'pontos': pts_ant})
-                # ==============================================================
                 
             wb_leitura.close()
             
@@ -227,7 +283,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             ranks_ontem = ranquear_passado(lista_ontem)
             ranks_anteontem = ranquear_passado(lista_anteontem)
 
-            # Cálculo exclusivo para os Cards de Destaque (Ontem vs Anteontem)
             var_ontem_cards = {}
             for n, pos_ont in ranks_ontem.items():
                 pos_ant = ranks_anteontem.get(n, pos_ont)
@@ -244,7 +299,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 "maior_subida": {"nomes": h_sub, "valor": m_subida},
                 "maior_queda": {"nomes": v_que, "valor": abs(m_queda)}
             }
-            # ==================================================================
 
             # RANQUEAR E FORMATAR LISTA LIVE
             lista_ranking.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
@@ -268,7 +322,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     participante['dif'] = f"+{dif}" if dif > 0 else "="
                 else: participante['dif'] = "-"
 
-                # Variação da tabela ao vivo (Live Atual vs Final de Ontem)
+                # Variação da tabela ao vivo
                 pos_antiga = ranks_ontem.get(participante['nome'], posicao_atual)
                 variacao = pos_antiga - posicao_atual
                 
@@ -434,9 +488,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 from collections import Counter
                 service = obter_serviço_drive()
                 
-                # ==============================================================
-                # MODO ADMIN (EASTER EGG DE GRÁFICOS)
-                # ==============================================================
                 pesq_bruta = st.session_state.data_pesquisada.strip().lower()
                 modo_grafico = False
                 
@@ -444,10 +495,21 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     modo_grafico = True
                     pesq_bruta = pesq_bruta.replace("-graficos", "").strip()
                 
+                dia_pesq, mes_pesq = None, None
                 if "/" in pesq_bruta:
-                    try: pesq_limpa = f"{int(pesq_bruta.split('/')[0])}/{int(pesq_bruta.split('/')[1])}"
+                    try: 
+                        dia_pesq = int(pesq_bruta.split('/')[0])
+                        mes_pesq = int(pesq_bruta.split('/')[1])
+                        pesq_limpa = f"{dia_pesq}/{mes_pesq}"
                     except: pesq_limpa = pesq_bruta
                 else: pesq_limpa = pesq_bruta
+                
+                # --- Lógica da Data: Fase 1 (<= 27/6) vs Mata-Mata (>= 28/6) ---
+                is_mata_mata = False
+                if dia_pesq and mes_pesq:
+                    # Se for julho (7) em diante, ou final de junho (28, 29, 30)
+                    if mes_pesq > 6 or (mes_pesq == 6 and dia_pesq >= 28):
+                        is_mata_mata = True
 
                 query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
                 resultados = service.files().list(q=query, fields="files(id, name)").execute()
@@ -461,23 +523,46 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 bytes_c.seek(0)
                 wb_leitura = openpyxl.load_workbook(bytes_c, data_only=True)
                 
-                ws_fase1 = wb_leitura['FASE 1']
                 jogos_reais_do_dia = {}
-                for r in range(3, 75):
-                    val_data = ws_fase1[f'C{r}'].value
-                    if val_data is None: continue
-                    data_jogo = f"{val_data.day}/{val_data.month}" if isinstance(val_data, dt.datetime) else str(val_data).strip()
-                    if "/" in data_jogo and not isinstance(val_data, dt.datetime):
-                        try: data_jogo = f"{int(data_jogo.split('/')[0])}/{int(data_jogo.split('/')[1])}"
-                        except: pass
-                    
-                    if data_jogo == pesq_limpa:
-                        jogos_reais_do_dia[r] = {
-                            'time_casa': str(ws_fase1[f'F{r}'].value).strip(),
-                            'g_casa': ws_fase1[f'G{r}'].value,
-                            'g_fora': ws_fase1[f'I{r}'].value,
-                            'time_fora': str(ws_fase1[f'J{r}'].value).strip()
-                        }
+                
+                if not is_mata_mata:
+                    ws_fase = wb_leitura['FASE 1']
+                    for r in range(3, 75):
+                        val_data = ws_fase[f'C{r}'].value
+                        if val_data is None: continue
+                        data_jogo = f"{val_data.day}/{val_data.month}" if isinstance(val_data, dt.datetime) else str(val_data).strip()
+                        if "/" in data_jogo and not isinstance(val_data, dt.datetime):
+                            try: data_jogo = f"{int(data_jogo.split('/')[0])}/{int(data_jogo.split('/')[1])}"
+                            except: pass
+                        
+                        if data_jogo == pesq_limpa:
+                            jogos_reais_do_dia[r] = {
+                                'time_casa': str(ws_fase[f'F{r}'].value).strip(),
+                                'g_casa': ws_fase[f'G{r}'].value,
+                                'g_fora': ws_fase[f'I{r}'].value,
+                                'time_fora': str(ws_fase[f'J{r}'].value).strip()
+                            }
+                else:
+                    nome_aba_fase2 = 'FASE 2, 3, 4, SEMI & FINAL'
+                    if nome_aba_fase2 in wb_leitura.sheetnames:
+                        ws_fase = wb_leitura[nome_aba_fase2]
+                        for r in range(3, 100):
+                            val_data = ws_fase[f'A{r}'].value
+                            if val_data is None: continue
+                            data_jogo = f"{val_data.day}/{val_data.month}" if isinstance(val_data, dt.datetime) else str(val_data).strip()
+                            if "/" in data_jogo and not isinstance(val_data, dt.datetime):
+                                try: data_jogo = f"{int(data_jogo.split('/')[0])}/{int(data_jogo.split('/')[1])}"
+                                except: pass
+                            
+                            if data_jogo == pesq_limpa:
+                                nome_casa = ws_fase[f'D{r}'].value
+                                if nome_casa is not None and str(nome_casa).strip() != "":
+                                    jogos_reais_do_dia[r] = {
+                                        'time_casa': str(nome_casa).strip(),
+                                        'g_casa': ws_fase[f'E{r}'].value,
+                                        'g_fora': ws_fase[f'G{r}'].value,
+                                        'time_fora': str(ws_fase[f'H{r}'].value).strip()
+                                    }
 
                 ws_tabela = wb_leitura['TABELA']
                 participantes = []
@@ -504,7 +589,9 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         cards_html = ""
                         
                         for r, jogo_real in jogos_reais_do_dia.items():
-                            palp_c, palp_f = palpites_usuario.get(r, (None, None))
+                            # Extrai da Fase 2 se a data for >= 28/6, senão Fase 1
+                            palpites_fase_certa = palpites_usuario['fase2'] if is_mata_mata else palpites_usuario['fase1']
+                            palp_c, palp_f = palpites_fase_certa.get(r, (None, None))
                             
                             if palp_c is not None and palp_f is not None:
                                 try:
@@ -556,9 +643,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
         # Fora do Spinner, renderizamos as UIs de acordo com o Modo (Admin vs Usuário)
         if st.session_state.busca_ativa:
             if modo_grafico:
-                # ==============================================================
-                # MODO ADMIN: GERAÇÃO DO REPORT GAMIFICADO LADO A LADO
-                # ==============================================================
                 st.divider()
                 st.markdown("## 📊 Relatório Oficial da Comunidade")
                 
@@ -573,7 +657,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     t_c = jogo['time_casa'].upper()
                     t_f = jogo['time_fora'].upper()
                     
-                    # Cálculos das métricas
                     v_casa = sum(1 for c, f in palpites_jogo if c > f)
                     v_emp  = sum(1 for c, f in palpites_jogo if c == f)
                     v_fora = sum(1 for c, f in palpites_jogo if c < f)
@@ -582,7 +665,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     pct_e = int(round((v_emp / N) * 100))
                     pct_f = int(round((v_fora / N) * 100))
                     
-                    # Barras redimensionadas para caberem nas colunas lado a lado
                     bar_c = "█" * int((pct_c / 100) * 10)
                     bar_e = "█" * int((pct_e / 100) * 10)
                     bar_f = "█" * int((pct_f / 100) * 10)
@@ -598,19 +680,16 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     bar_mc = "█" * int((med_c / max_med) * 8)
                     bar_mf = "█" * int((med_f / max_med) * 8)
                     
-                    # CONSTRUÇÃO DO HTML (GRID FLEXBOX 3 COLUNAS)
                     html_card = f"<div style='background:#0F172A; border:1px solid #1E293B; border-radius:12px; padding:20px; margin-bottom:25px; color:#F8FAFC; font-family: sans-serif; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);'>"
                     
-                    # Cabeçalho Centralizado
                     html_card += f"<h3 style='text-align:center; color:#E2E8F0; letter-spacing: 2px; margin-top:0; margin-bottom:10px; font-size:18px;'>{t_c} x {t_f}</h3>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; text-align:center; margin-bottom:5px;'>🏆 Palpite oficial do bolão</p>"
                     html_card += f"<p style='font-size:22px; font-weight:bold; color:#F8FAFC; text-align:center; margin:0 0 15px 0;'>{jogo['time_casa']} <span style='color:#F59E0B;'>{placar_oficial}</span> {jogo['time_fora']}</p>"
                     html_card += "<hr style='border: 0; border-top: 1px solid #1E293B; margin: 15px 0 20px 0;'>"
                     
-                    # Início do Flex Container para as 3 colunas
                     html_card += "<div style='display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px;'>"
                     
-                    # --- Coluna 1: Quem Vence ---
+                    # Coluna 1
                     html_card += "<div style='flex: 1; min-width: 200px;'>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Quem vence?</p>"
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#22C55E;'>{bar_c}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_c}%</div></div>"
@@ -618,7 +697,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#3B82F6;'>{bar_f}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_f}%</div></div>"
                     html_card += "</div>"
                     
-                    # --- Coluna 2: Placares ---
+                    # Coluna 2
                     html_card += "<div style='flex: 1; min-width: 200px;'>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Placares mais apostados</p>"
                     for placar, count in top_placares:
@@ -627,23 +706,18 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         html_card += f"<div style='display: flex; margin-bottom: 8px;'><div style='width: 40px; text-align: right; margin-right: 12px; color:#F8FAFC;'>{placar}</div><div style='flex-grow: 1; color:#F59E0B;'>{bar_p}</div><div style='width: 30px; text-align: left; color:#94A3B8; margin-left: 8px;'>{count}</div></div>"
                     html_card += "</div>"
                     
-                    # --- Coluna 3: Média ---
+                    # Coluna 3
                     html_card += "<div style='flex: 1; min-width: 200px;'>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Média de gols</p>"
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#94A3B8;'>{bar_mc}</div><div style='width: 30px; text-align: left; font-weight:bold; margin-left: 8px;'>{med_c:.1f}</div></div>"
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#94A3B8;'>{bar_mf}</div><div style='width: 30px; text-align: left; font-weight:bold; margin-left: 8px;'>{med_f:.1f}</div></div>"
                     html_card += "</div>"
 
-                    # Fechamento
-                    html_card += "</div>" # fecha flex
-                    html_card += "</div>" # fecha card
+                    html_card += "</div></div>"
                     
                     st.markdown(html_card, unsafe_allow_html=True)
             
             else:
-                # ==============================================================
-                # VISAO PADRÃO (PARA OS USUÁRIOS COMUNS)
-                # ==============================================================
                 if jogos_reais_do_dia:
                     st.markdown("### 🏟️ Resultados Oficiais")
                     cols_reais = st.columns(len(jogos_reais_do_dia))
