@@ -185,7 +185,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     if nome_casa is not None and str(nome_casa).strip() != "":
                         resultados_reais_f2[r] = (ws_fase2_leitura[f'E{r}'].value, ws_fase2_leitura[f'G{r}'].value)
                         
-                        val_data = ws_fase2_leitura[f'C{r}'].value
+                        val_data = ws_fase2_leitura[f'A{r}'].value
                         d_jogo = None
                         if isinstance(val_data, dt.datetime): d_jogo = val_data.date()
                         elif val_data:
@@ -508,7 +508,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 is_mata_mata = False
                 if dia_pesq and mes_pesq:
                     # Se for julho (7) em diante, ou final de junho (28, 29, 30)
-                    if mes_pesq > 7 or (mes_pesq == 7 and dia_pesq >= 28):
+                    if mes_pesq > 6 or (mes_pesq == 6 and dia_pesq >= 28):
                         is_mata_mata = True
 
                 query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
