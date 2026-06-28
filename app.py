@@ -279,7 +279,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             arquivo_saida_bytes.seek(0)
             wb_gravar.close()
             
-            nome_saida = 'BOLÃO DA COPA DO MUNDO 2026 (THE).xlsx'
+            nome_saida = 'BOLÃO DA COPA DO MUNDO 2026-TESTE.xlsx'
             media_upload = MediaIoBaseUpload(arquivo_saida_bytes, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
             if nome_saida in mapa_arquivos: service.files().update(fileId=mapa_arquivos[nome_saida], media_body=media_upload).execute()
             else: service.files().create(body={'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}, media_body=media_upload).execute()
