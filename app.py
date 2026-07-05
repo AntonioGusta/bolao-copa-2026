@@ -43,13 +43,11 @@ def carregar_palpites_em_cache(file_id):
         for r in range(3, 75):
             palpites['fase1'][r] = (ws1[f'G{r}'].value, ws1[f'I{r}'].value)
             
-    # Carrega o Mata-Mata (Pré-Oitavas em diante)
+    # Carrega o Mata-Mata (Pré-Oitavas, Oitavas, etc.)
     nome_aba_fase2 = 'FASE 2, 3, 4, SEMI & FINAL'
     if nome_aba_fase2 in wb.sheetnames:
         ws2 = wb[nome_aba_fase2]
-        # Varrendo até a linha 100 para garantir que pega todos os jogos do mata-mata
         for r in range(3, 100):
-            # Colunas da Fase 2: Gols Casa = E, Gols Fora = G
             palpites['fase2'][r] = (ws2[f'E{r}'].value, ws2[f'G{r}'].value)
             
     wb.close()
@@ -79,7 +77,8 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     
     html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
-    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Fase Grupos</th><th style='padding: 8px; color:#94A3B8;'>Pré Oitavas</th><th style='padding: 8px; font-size: 15px;'>Total</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
+    # --- CABEÇALHO ATUALIZADO COM OITAVAS ---
+    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Grupos</th><th style='padding: 8px; color:#94A3B8;'>Pré-Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Oitavas</th><th style='padding: 8px; font-size: 15px;'>Total</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
     html += "</thead><tbody>"
 
     for p in participantes:
@@ -92,8 +91,10 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
         html += f"<td style='padding: 6px; font-size: 13px;'>{p.get('var_html', '➖')}</td>"
         html += f"<td style='text-align: left; padding: 6px;'>{p.get('nome_exibicao', p['nome'])}</td>"
         
+        # --- COLUNAS DE PONTOS ---
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_grupos', 0)}</td>"
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_pre_oitavas', 0)}</td>"
+        html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_oitavas', 0)}</td>"
         html += f"<td style='padding: 6px; font-weight: bold; font-size: 15px; color:#F59E0B;'>{p['pontos']}</td>"
         
         html += f"<td style='padding: 6px; font-size: 12px; color:#64748B;'>{p.get('dif', '-')}</td>"
@@ -107,17 +108,16 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
 # ==============================================================================
 st.set_page_config(page_title="Bolão Copa 2026 (THE)", page_icon="⚽", layout="wide")
 
-# CSS para pintar o botão primary de Azul Claro
 st.markdown("""
 <style>
 button[kind="primary"] {
-    background-color: #38BDF8 !important; /* Azul claro */
+    background-color: #38BDF8 !important; 
     color: #0F172A !important;
     border-color: #38BDF8 !important;
     font-weight: bold;
 }
 button[kind="primary"]:hover {
-    background-color: #0EA5E9 !important; /* Azul um pouco mais escuro no hover */
+    background-color: #0EA5E9 !important; 
     color: #ffffff !important;
 }
 </style>
@@ -141,7 +141,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 st.error("Erro: 'Arquivo_de_controle.xlsx' não encontrado na pasta do Drive.")
                 st.stop()
 
-            # LER ARQUIVO DE CONTROLE
             id_controle = mapa_arquivos['Arquivo_de_controle.xlsx']
             requisicao = service.files().get_media(fileId=id_controle)
             bytes_controle = io.BytesIO()
@@ -180,7 +179,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             if nome_aba_fase2 in wb_leitura.sheetnames:
                 ws_fase2_leitura = wb_leitura[nome_aba_fase2]
                 for r in range(3, 100):
-                    # Só avalia a linha se tiver algum nome de time verdadeiro no controle
                     nome_casa = ws_fase2_leitura[f'D{r}'].value
                     if nome_casa is not None and str(nome_casa).strip() != "":
                         resultados_reais_f2[r] = (ws_fase2_leitura[f'E{r}'].value, ws_fase2_leitura[f'G{r}'].value)
@@ -209,7 +207,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 arquivo_palpite = f"{nome}.xlsx"
                 
                 if arquivo_palpite not in mapa_arquivos:
-                    lista_ranking.append({'nome': nome, 'pontos': 0, 'pts_grupos': 0, 'pts_pre_oitavas': 0})
+                    lista_ranking.append({'nome': nome, 'pontos': 0, 'pts_grupos': 0, 'pts_pre_oitavas': 0, 'pts_oitavas': 0})
                     continue
                     
                 id_part = mapa_arquivos[arquivo_palpite]
@@ -217,6 +215,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 
                 pts_grupos = 0
                 pts_pre_oitavas = 0
+                pts_oitavas = 0
                 pts_ont = 0
                 pts_ant = 0
                 
@@ -242,7 +241,12 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     
                     p_casa, p_fora = palpites['fase2'].get(r, (None, None))
                     pts = calcular_pontos(g_m_real, g_v_real, p_casa, p_fora)
-                    pts_pre_oitavas += pts
+                    
+                    # FISCAL DE TRÂNSITO: Separando as pontuações pelas linhas
+                    if 3 <= r <= 18:
+                        pts_pre_oitavas += pts
+                    elif 22 <= r <= 29:
+                        pts_oitavas += pts
                     
                     d_jogo = datas_jogos_f2.get(r)
                     if d_jogo:
@@ -252,13 +256,14 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                         pts_ont += pts
                         pts_ant += pts
                         
-                pts_total_live = pts_grupos + pts_pre_oitavas
+                pts_total_live = pts_grupos + pts_pre_oitavas + pts_oitavas
                 
                 lista_ranking.append({
                     'nome': nome, 
                     'pontos': pts_total_live, 
                     'pts_grupos': pts_grupos,
-                    'pts_pre_oitavas': pts_pre_oitavas
+                    'pts_pre_oitavas': pts_pre_oitavas,
+                    'pts_oitavas': pts_oitavas
                 })
                 
                 lista_ontem.append({'nome': nome, 'pontos': pts_ont})
@@ -267,7 +272,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             wb_leitura.close()
             
             # ==================================================================
-            # CALCULAR RANKS PASSADOS ON THE FLY (SEM JSON)
+            # CALCULAR RANKS PASSADOS ON THE FLY
             # ==================================================================
             def ranquear_passado(lista):
                 lista.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
@@ -322,7 +327,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     participante['dif'] = f"+{dif}" if dif > 0 else "="
                 else: participante['dif'] = "-"
 
-                # Variação da tabela ao vivo
                 pos_antiga = ranks_ontem.get(participante['nome'], posicao_atual)
                 variacao = pos_antiga - posicao_atual
                 
@@ -434,7 +438,6 @@ if aba_selecionada == "🏆 Classificação e Resenha":
                         <p style="color: #64748B; margin: 0; font-size: 14px;">Nenhuma alteração na tabela.</p>
                     </div>
                     """, unsafe_allow_html=True)
-        # ----------------------------------------------
 
         idx_prof = 5 if N >= 5 else N
         while idx_prof < N and dados[idx_prof]['pontos'] == dados[idx_prof - 1]['pontos']: idx_prof += 1
@@ -507,7 +510,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 # --- Lógica da Data: Fase 1 (<= 27/6) vs Mata-Mata (>= 28/6) ---
                 is_mata_mata = False
                 if dia_pesq and mes_pesq:
-                    # Se for julho (7) em diante, ou final de junho (28, 29, 30)
                     if mes_pesq > 6 or (mes_pesq == 6 and dia_pesq >= 28):
                         is_mata_mata = True
 
@@ -589,7 +591,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         cards_html = ""
                         
                         for r, jogo_real in jogos_reais_do_dia.items():
-                            # Extrai da Fase 2 se a data for >= 28/6, senão Fase 1
                             palpites_fase_certa = palpites_usuario['fase2'] if is_mata_mata else palpites_usuario['fase1']
                             palp_c, palp_f = palpites_fase_certa.get(r, (None, None))
                             
@@ -640,7 +641,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
             except Exception as e:
                 st.error(f"Ocorreu um erro na busca: {e}")
 
-        # Fora do Spinner, renderizamos as UIs de acordo com o Modo (Admin vs Usuário)
         if st.session_state.busca_ativa:
             if modo_grafico:
                 st.divider()
@@ -689,7 +689,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     
                     html_card += "<div style='display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px;'>"
                     
-                    # Coluna 1
                     html_card += "<div style='flex: 1; min-width: 200px;'>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Quem vence?</p>"
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#22C55E;'>{bar_c}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_c}%</div></div>"
@@ -697,7 +696,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#3B82F6;'>{bar_f}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_f}%</div></div>"
                     html_card += "</div>"
                     
-                    # Coluna 2
                     html_card += "<div style='flex: 1; min-width: 200px;'>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Placares mais apostados</p>"
                     for placar, count in top_placares:
@@ -706,7 +704,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         html_card += f"<div style='display: flex; margin-bottom: 8px;'><div style='width: 40px; text-align: right; margin-right: 12px; color:#F8FAFC;'>{placar}</div><div style='flex-grow: 1; color:#F59E0B;'>{bar_p}</div><div style='width: 30px; text-align: left; color:#94A3B8; margin-left: 8px;'>{count}</div></div>"
                     html_card += "</div>"
                     
-                    # Coluna 3
                     html_card += "<div style='flex: 1; min-width: 200px;'>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Média de gols</p>"
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#94A3B8;'>{bar_mc}</div><div style='width: 30px; text-align: left; font-weight:bold; margin-left: 8px;'>{med_c:.1f}</div></div>"
