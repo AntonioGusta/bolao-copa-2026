@@ -43,7 +43,7 @@ def carregar_palpites_em_cache(file_id):
         for r in range(3, 75):
             palpites['fase1'][r] = (ws1[f'G{r}'].value, ws1[f'I{r}'].value)
             
-    # Carrega o Mata-Mata (Pré-Oitavas, Oitavas, etc.)
+    # Carrega o Mata-Mata
     nome_aba_fase2 = 'FASE 2, 3, 4, SEMI & FINAL'
     if nome_aba_fase2 in wb.sheetnames:
         ws2 = wb[nome_aba_fase2]
@@ -77,8 +77,8 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     
     html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
-    # --- CABEÇALHO ATUALIZADO COM OITAVAS ---
-    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Grupos</th><th style='padding: 8px; color:#94A3B8;'>Pré-Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Oitavas</th><th style='padding: 8px; font-size: 15px;'>Total</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
+    # --- CABEÇALHO ATUALIZADO COM QUARTAS ---
+    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Grupos</th><th style='padding: 8px; color:#94A3B8;'>Pré-Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Quartas</th><th style='padding: 8px; font-size: 15px;'>Total</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
     html += "</thead><tbody>"
 
     for p in participantes:
@@ -95,6 +95,7 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_grupos', 0)}</td>"
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_pre_oitavas', 0)}</td>"
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_oitavas', 0)}</td>"
+        html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_quartas', 0)}</td>"
         html += f"<td style='padding: 6px; font-weight: bold; font-size: 15px; color:#F59E0B;'>{p['pontos']}</td>"
         
         html += f"<td style='padding: 6px; font-size: 12px; color:#64748B;'>{p.get('dif', '-')}</td>"
@@ -207,7 +208,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 arquivo_palpite = f"{nome}.xlsx"
                 
                 if arquivo_palpite not in mapa_arquivos:
-                    lista_ranking.append({'nome': nome, 'pontos': 0, 'pts_grupos': 0, 'pts_pre_oitavas': 0, 'pts_oitavas': 0})
+                    lista_ranking.append({'nome': nome, 'pontos': 0, 'pts_grupos': 0, 'pts_pre_oitavas': 0, 'pts_oitavas': 0, 'pts_quartas': 0})
                     continue
                     
                 id_part = mapa_arquivos[arquivo_palpite]
@@ -216,6 +217,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 pts_grupos = 0
                 pts_pre_oitavas = 0
                 pts_oitavas = 0
+                pts_quartas = 0
                 pts_ont = 0
                 pts_ant = 0
                 
@@ -247,6 +249,8 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                         pts_pre_oitavas += pts
                     elif 22 <= r <= 29:
                         pts_oitavas += pts
+                    elif 33 <= r <= 36:
+                        pts_quartas += pts
                     
                     d_jogo = datas_jogos_f2.get(r)
                     if d_jogo:
@@ -256,14 +260,15 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                         pts_ont += pts
                         pts_ant += pts
                         
-                pts_total_live = pts_grupos + pts_pre_oitavas + pts_oitavas
+                pts_total_live = pts_grupos + pts_pre_oitavas + pts_oitavas + pts_quartas
                 
                 lista_ranking.append({
                     'nome': nome, 
                     'pontos': pts_total_live, 
                     'pts_grupos': pts_grupos,
                     'pts_pre_oitavas': pts_pre_oitavas,
-                    'pts_oitavas': pts_oitavas
+                    'pts_oitavas': pts_oitavas,
+                    'pts_quartas': pts_quartas
                 })
                 
                 lista_ontem.append({'nome': nome, 'pontos': pts_ont})
