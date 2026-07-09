@@ -457,17 +457,20 @@ if aba_selecionada == "🏆 Classificação e Resenha":
         profissionais, amadores = dados[:idx_prof], dados[idx_prof:idx_amad]
         peladeiros, lanterna = dados[idx_amad:idx_lant], dados[idx_lant:]
         
-        col1, col2, col3 = st.columns(3)
+        # Linha 1: Duas colunas para os melhores
+        col1, col2 = st.columns(2)
         with col1:
             if profissionais: st.markdown(gerar_tabela_html(profissionais, "Profissionais", "- Elite do Pitaco -", "#166534", [1, 2, 3, 4, 5]), unsafe_allow_html=True)
         with col2:
             if amadores: st.markdown(gerar_tabela_html(amadores, "Amadores", "- Os que ainda sonham -"), unsafe_allow_html=True)
-        with col3:
-            if peladeiros: st.markdown(gerar_tabela_html(peladeiros, "Peladeiros", "- Especialistas em Errar -"), unsafe_allow_html=True)
             
         st.write("---")
-        col_vazia1, col_lanterna, col_vazia2 = st.columns([1, 2, 1])
-        with col_lanterna:
+        
+        # Linha 2: Duas colunas para o fundo da tabela
+        col3, col4 = st.columns(2)
+        with col3:
+            if peladeiros: st.markdown(gerar_tabela_html(peladeiros, "Peladeiros", "- Especialistas em Errar -"), unsafe_allow_html=True)
+        with col4:
             if lanterna:
                 posicoes_lanterna = [int(p['posicao'].replace("º Lugar", "").strip()) for p in lanterna]
                 st.markdown(gerar_tabela_html(lanterna, "Prêmio Espírito Coletivo", "- Bastava Apostar ao Contrário -", "#991B1B", posicoes_lanterna), unsafe_allow_html=True)
