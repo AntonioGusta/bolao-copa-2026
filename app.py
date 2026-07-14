@@ -785,29 +785,23 @@ elif aba_selecionada == "🔮 Palpites Finais e Premiações":
 # --- TELA 4: SIMULADOR ---
 elif aba_selecionada == "🎮 Simulador da Reta Final":
     st.subheader("🎮 Simulador da Reta Final")
-    st.info("⚠️ **Observação:** Esta simulação calcula **apenas** os acertos de Premiação (Campeão, Vice, 3º, 4º) e Artilheiro. Ela **não** soma os pontos de placar dos jogos (Semifinais e Finais), pois focamos na pontuação principal das premiações.")
+    st.info("⚠️ **Observação:** Esta simulação calcula **apenas** os acertos de Premiação (Campeão, Vice, 3º, 4º) e Artilheiro. Ela **não** soma os pontos de placar dos jogos das Semifinais e Finais, pois focamos na pontuação principal das posições da Copa.")
 
     if not st.session_state.ranking_processado:
         st.warning("👆 Clique no botão azul lá em cima para buscar os dados oficiais antes de simular.")
     else:
-        st.markdown("### 1️⃣ Defina os confrontos das Semifinais")
-        times_opcoes = ["Espanha", "França", "Brasil", "Inglaterra", "Argentina", "Noruega", "Portugal", "Holanda", "Outro"]
+        st.markdown("### 1️⃣ Defina os vencedores das Semifinais")
         
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("#### ⚔️ Semifinal 1")
-            s1_t1 = st.selectbox("Time A:", times_opcoes, index=0, key='s1_t1')
-            s1_t2 = st.selectbox("Time B:", times_opcoes, index=1, key='s1_t2')
-            vencedor_s1 = st.radio("Quem avança para a Final?", [s1_t1, s1_t2], key='v_s1')
+            vencedor_s1 = st.radio("Quem avança para a Final?", ["🇫🇷 França", "🇪🇸 Espanha"], key='v_s1')
+            perdedor_s1 = "🇪🇸 Espanha" if vencedor_s1 == "🇫🇷 França" else "🇫🇷 França"
         
         with c2:
             st.markdown("#### ⚔️ Semifinal 2")
-            s2_t1 = st.selectbox("Time C:", times_opcoes, index=2, key='s2_t1')
-            s2_t2 = st.selectbox("Time D:", times_opcoes, index=3, key='s2_t2')
-            vencedor_s2 = st.radio("Quem avança para a Final?", [s2_t1, s2_t2], key='v_s2')
-        
-        perdedor_s1 = s1_t2 if vencedor_s1 == s1_t1 else s1_t1
-        perdedor_s2 = s2_t2 if vencedor_s2 == s2_t1 else s2_t1
+            vencedor_s2 = st.radio("Quem avança para a Final?", ["🇦🇷 Argentina", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra"], key='v_s2')
+            perdedor_s2 = "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra" if vencedor_s2 == "🇦🇷 Argentina" else "🇦🇷 Argentina"
         
         st.divider()
         st.markdown("### 2️⃣ Defina os Vencedores das Finais")
@@ -824,7 +818,7 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
             
         st.divider()
         st.markdown("### 3️⃣ Defina o Artilheiro")
-        artilheiro_sim = st.selectbox("Artilheiro do Torneio:", ["Kylian Mbappé", "Harry Kane", "Mikel Oyarzabal", "Julian Alvarez", "Outro"])
+        artilheiro_sim = st.selectbox("Artilheiro do Torneio:", ["Escolher...", "Kylian Mbappé", "Harry Kane", "Mikel Oyarzabal", "Julian Alvarez", "Outro"])
         
         st.write("")
         if st.button("🚀 Calcular Tabela Simulada", type="primary", use_container_width=True):
@@ -833,8 +827,12 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
             def norm(s):
                 if not s: return ""
                 return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').strip().lower()
+            
+            # Remove o emoji da bandeira antes de passar na regra matemática
+            def remover_bandeira(nome_bandeira):
+                return nome_bandeira.split(" ", 1)[1] if " " in nome_bandeira else nome_bandeira
 
-            sim_top4 = [norm(campeao), norm(vice), norm(terceiro), norm(quarto)]
+            sim_top4 = [norm(remover_bandeira(campeao)), norm(remover_bandeira(vice)), norm(remover_bandeira(terceiro)), norm(remover_bandeira(quarto))]
             s_art = norm(artilheiro_sim)
             
             lista_simulada = []
@@ -855,7 +853,7 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
                 p_art = norm(p.get('artilheiro', '-'))
                 acertou_artilheiro = False
                 
-                if s_art != "outro" and p_art != "-" and p_art != "":
+                if s_art != "outro" and s_art != "escolher..." and p_art != "-" and p_art != "":
                     if s_art in p_art or p_art in s_art: acertou_artilheiro = True
                     if s_art == "kylian mbappe" and "mbappe" in p_art: acertou_artilheiro = True
                     if s_art == "harry kane" and "kane" in p_art: acertou_artilheiro = True
