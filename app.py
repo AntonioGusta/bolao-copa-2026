@@ -1,8 +1,10 @@
 import os
 import io
 import datetime as dt
+import unicodedata
 import streamlit as st
 import openpyxl
+from collections import Counter
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -120,6 +122,29 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     html += "</tbody></table></div>"
     return html
 
+def gerar_tabela_simulacao_html(participantes):
+    html = f"<div style='background: #0F172A; padding: 15px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.35); text-align: center; margin-bottom: 20px; font-family: sans-serif;'>"
+    html += f"<h4 style='margin-bottom: 0px; color: #F8FAFC;'>🏆 Ranking do Futuro</h4>"
+    html += f"<p style='margin-top: 0px; font-size: 14px; font-style: italic; color: #CBD5E1;'>Tabela projetada com os resultados escolhidos na simulação</p>"
+    
+    html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #F8FAFC; margin-top: 15px;'>"
+    html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
+    html += "<tr><th style='padding: 8px;'>Pos</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Pts Atuais</th><th style='padding: 8px; color:#22C55E;'>Pts Ganhos (Premiação)</th><th style='padding: 8px; font-size: 15px;'>Total Projetado</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
+    html += "</thead><tbody>"
+
+    for p in participantes:
+        html += f"<tr style='background-color: #1E293B; border-bottom: 1px solid #334155;'>"
+        html += f"<td style='padding: 6px; font-weight: bold;'>{p['posicao_sim'].replace(' Lugar', '')}</td>"
+        html += f"<td style='text-align: left; padding: 6px;'>{p.get('nome_exibicao', p['nome'])}</td>"
+        html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pontos_atuais', 0)}</td>"
+        html += f"<td style='padding: 6px; font-weight: bold; color:#22C55E;'>+{p.get('pts_simulacao', 0)}</td>"
+        html += f"<td style='padding: 6px; font-weight: bold; font-size: 15px; color:#F59E0B;'>{p['pontos_simulados']}</td>"
+        html += f"<td style='padding: 6px; font-size: 12px; color:#64748B;'>{p.get('dif_sim', '-')}</td>"
+        html += "</tr>"
+
+    html += "</tbody></table></div>"
+    return html
+
 # ==============================================================================
 # CONFIGURAÇÃO VISUAL E GESTÃO DE ESTADO
 # ==============================================================================
@@ -172,13 +197,11 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             ontem_date = hoje_date - dt.timedelta(days=1)
             anteontem_date = hoje_date - dt.timedelta(days=2)
             
-            # --- COLETAR GABARITO FASE 1 ---
             ws_fase1_leitura = wb_leitura['FASE 1']
             resultados_reais_f1 = {}
             datas_jogos_f1 = {}
             for r in range(3, 75):
                 resultados_reais_f1[r] = (ws_fase1_leitura[f'G{r}'].value, ws_fase1_leitura[f'I{r}'].value)
-                
                 val_data = ws_fase1_leitura[f'C{r}'].value
                 d_jogo = None
                 if isinstance(val_data, dt.datetime): d_jogo = val_data.date()
@@ -189,7 +212,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                         except: pass
                 datas_jogos_f1[r] = d_jogo
 
-            # --- COLETAR GABARITO MATA-MATA (FASE 2) ---
             nome_aba_fase2 = 'FASE 2, 3, 4, SEMI & FINAL'
             resultados_reais_f2 = {}
             datas_jogos_f2 = {}
@@ -199,7 +221,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     nome_casa = ws_fase2_leitura[f'D{r}'].value
                     if nome_casa is not None and str(nome_casa).strip() != "":
                         resultados_reais_f2[r] = (ws_fase2_leitura[f'E{r}'].value, ws_fase2_leitura[f'G{r}'].value)
-                        
                         val_data = ws_fase2_leitura[f'A{r}'].value
                         d_jogo = None
                         if isinstance(val_data, dt.datetime): d_jogo = val_data.date()
@@ -215,7 +236,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             lista_ontem = []
             lista_anteontem = []
             
-            # PROCESSAR PLANILHAS
             for row_tabela in range(2, 101):
                 celula_nome = ws_tabela_leitura[f'A{row_tabela}'].value
                 if celula_nome is None or str(celula_nome).strip() == "" or str(celula_nome).strip().lower() == "participante": continue
@@ -242,13 +262,11 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 pts_ont = 0
                 pts_ant = 0
                 
-                # Pontuação Fase 1
                 for r, (g_m_real, g_v_real) in resultados_reais_f1.items():
                     if g_m_real is None or g_v_real is None: continue
                     p_casa, p_fora = palpites['fase1'].get(r, (None, None))
                     pts = calcular_pontos(g_m_real, g_v_real, p_casa, p_fora)
                     pts_grupos += pts
-                    
                     d_jogo = datas_jogos_f1.get(r)
                     if d_jogo:
                         if d_jogo <= ontem_date: pts_ont += pts
@@ -257,7 +275,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                         pts_ont += pts
                         pts_ant += pts
 
-                # Pontuação Mata-Mata
                 for r, (g_m_real, g_v_real) in resultados_reais_f2.items():
                     if g_m_real is None or g_v_real is None: continue
                     p_casa, p_fora = palpites['fase2'].get(r, (None, None))
@@ -295,9 +312,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 
             wb_leitura.close()
             
-            # ==================================================================
-            # CALCULAR RANKS PASSADOS ON THE FLY
-            # ==================================================================
             def ranquear_passado(lista):
                 lista.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
                 pos_dict = {}
@@ -329,7 +343,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 "maior_queda": {"nomes": v_que, "valor": abs(m_queda)}
             }
 
-            # RANQUEAR E FORMATAR LISTA LIVE
             lista_ranking.sort(key=lambda x: (-x['pontos'], x['nome'].lower()))
             
             posicao_atual = 1
@@ -358,7 +371,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 elif variacao < 0: participante['var_html'] = f"<span style='color: #EF4444;'>▼ {abs(variacao)}</span>"
                 else: participante['var_html'] = "<span style='color: #94A3B8;'>➖</span>"
 
-            # GRAVAR EXCEL (PROTEGIDO COMO AMBIENTE DE TESTES)
+            # GRAVAR EXCEL TESTES
             bytes_controle.seek(0)
             wb_gravar = openpyxl.load_workbook(bytes_controle, data_only=False)
             if 'Dados Pessoais' in wb_gravar.sheetnames: wb_gravar.remove(wb_gravar['Dados Pessoais'])
@@ -395,7 +408,7 @@ st.divider()
 # ==============================================================================
 aba_selecionada = st.radio(
     "Navegação:",
-    ["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada", "🔮 Palpites Finais e Premiações"],
+    ["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada", "🔮 Palpites Finais e Premiações", "🎮 Simulador da Reta Final"],
     horizontal=True,
     label_visibility="collapsed"
 )
@@ -409,11 +422,9 @@ if aba_selecionada == "🏆 Classificação e Resenha":
         resumo = st.session_state.get('resumo_ontem', {})
         N = len(dados)
         
-        # --- CARDS DE RESUMO ---
         if dados:
             lider = dados[0]
             col_c1, col_c2, col_c3 = st.columns(3)
-            
             with col_c1:
                 st.markdown(f"""
                 <div style="background: linear-gradient(90deg, #1E293B 0%, #0F172A 100%); border-left: 4px solid #F59E0B; padding: 15px; border-radius: 6px; margin-bottom: 25px; min-height: 105px;">
@@ -421,12 +432,10 @@ if aba_selecionada == "🏆 Classificação e Resenha":
                     <p style="color: #F8FAFC; margin: 0; font-size: 14px;"><strong>{lider['nome']}</strong> segue no topo com <strong>{lider['pontos']} pts</strong>!</p>
                 </div>
                 """, unsafe_allow_html=True)
-                
             with col_c2:
                 val_sub = resumo.get('maior_subida', {}).get('valor', 0)
                 data_str = resumo.get('data_str', 'Ontem')
                 nomes_sub = resumo.get('maior_subida', {}).get('nomes', [])
-                
                 if val_sub > 0 and nomes_sub:
                     n_str = ", ".join(nomes_sub)
                     st.markdown(f"""
@@ -442,11 +451,9 @@ if aba_selecionada == "🏆 Classificação e Resenha":
                         <p style="color: #64748B; margin: 0; font-size: 14px;">Nenhuma alteração na tabela.</p>
                     </div>
                     """, unsafe_allow_html=True)
-
             with col_c3:
                 val_que = resumo.get('maior_queda', {}).get('valor', 0)
                 nomes_que = resumo.get('maior_queda', {}).get('nomes', [])
-                
                 if val_que > 0 and nomes_que:
                     n_str = ", ".join(nomes_que)
                     st.markdown(f"""
@@ -465,10 +472,8 @@ if aba_selecionada == "🏆 Classificação e Resenha":
 
         idx_prof = 5 if N >= 5 else N
         while idx_prof < N and dados[idx_prof]['pontos'] == dados[idx_prof - 1]['pontos']: idx_prof += 1
-            
         idx_lant = max(N - 3, idx_prof) 
         while idx_lant > idx_prof and dados[idx_lant - 1]['pontos'] == dados[idx_lant]['pontos']: idx_lant -= 1
-            
         alvo_amad = idx_prof + 10
         idx_amad = min(alvo_amad, idx_lant) 
         while idx_amad < idx_lant and dados[idx_amad]['pontos'] == dados[idx_amad - 1]['pontos']: idx_amad += 1
@@ -499,10 +504,8 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
     hoje = dt.datetime.now(fuso_br)
     data_padrao = f"{hoje.day}/{hoje.month}"
     
-    if 'busca_ativa' not in st.session_state:
-        st.session_state.busca_ativa = False
-    if 'data_pesquisada' not in st.session_state:
-        st.session_state.data_pesquisada = ""
+    if 'busca_ativa' not in st.session_state: st.session_state.busca_ativa = False
+    if 'data_pesquisada' not in st.session_state: st.session_state.data_pesquisada = ""
 
     data_pesquisa = st.text_input("📅 Digite a data dos jogos que deseja ver (Ex: 12/6):", value=data_padrao)
     
@@ -513,12 +516,9 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
     if st.session_state.busca_ativa:
         with st.spinner("Analisando palpites..."):
             try:
-                from collections import Counter
                 service = obter_serviço_drive()
-                
                 pesq_bruta = st.session_state.data_pesquisada.strip().lower()
                 modo_grafico = False
-                
                 if "-graficos" in pesq_bruta:
                     modo_grafico = True
                     pesq_bruta = pesq_bruta.replace("-graficos", "").strip()
@@ -534,8 +534,7 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 
                 is_mata_mata = False
                 if dia_pesq and mes_pesq:
-                    if mes_pesq > 6 or (mes_pesq == 6 and dia_pesq >= 28):
-                        is_mata_mata = True
+                    if mes_pesq > 6 or (mes_pesq == 6 and dia_pesq >= 28): is_mata_mata = True
 
                 query = f"'{ID_PASTA_DRIVE}' in parents and trashed = false"
                 resultados = service.files().list(q=query, fields="files(id, name)").execute()
@@ -560,7 +559,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         if "/" in data_jogo and not isinstance(val_data, dt.datetime):
                             try: data_jogo = f"{int(data_jogo.split('/')[0])}/{int(data_jogo.split('/')[1])}"
                             except: pass
-                        
                         if data_jogo == pesq_limpa:
                             jogos_reais_do_dia[r] = {
                                 'time_casa': str(ws_fase[f'F{r}'].value).strip(),
@@ -579,7 +577,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                             if "/" in data_jogo and not isinstance(val_data, dt.datetime):
                                 try: data_jogo = f"{int(data_jogo.split('/')[0])}/{int(data_jogo.split('/')[1])}"
                                 except: pass
-                            
                             if data_jogo == pesq_limpa:
                                 nome_casa = ws_fase[f'D{r}'].value
                                 if nome_casa is not None and str(nome_casa).strip() != "":
@@ -617,11 +614,8 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         for r, jogo_real in jogos_reais_do_dia.items():
                             palpites_fase_certa = palpites_usuario['fase2'] if is_mata_mata else palpites_usuario['fase1']
                             palp_c, palp_f = palpites_fase_certa.get(r, (None, None))
-                            
                             if palp_c is not None and palp_f is not None:
-                                try:
-                                    pc_int, pf_int = int(float(palp_c)), int(float(palp_f))
-                                    palpites_por_jogo[r].append((pc_int, pf_int))
+                                try: palpites_por_jogo[r].append((int(float(palp_c)), int(float(palp_f))))
                                 except: pass
                             
                             try: p_c_str = str(int(float(palp_c))) if palp_c is not None else "-"
@@ -647,7 +641,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                         
                         info = dict_ranking.get(nome, {'pontos': '?', 'posicao': '-'})
                         pos_str = str(info['posicao']).replace("º Lugar", "").strip()
-                        
                         emoji = "👤"
                         if pos_str == '1': emoji = "🥇"
                         elif pos_str == '2': emoji = "🥈"
@@ -669,14 +662,11 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
             if modo_grafico:
                 st.divider()
                 st.markdown("## 📊 Relatório Oficial da Comunidade")
-                
-                if not jogos_reais_do_dia:
-                    st.warning("Nenhum jogo encontrado para esta data.")
+                if not jogos_reais_do_dia: st.warning("Nenhum jogo encontrado para esta data.")
                 
                 for r, jogo in jogos_reais_do_dia.items():
                     palpites_jogo = palpites_por_jogo[r]
                     if not palpites_jogo: continue
-                    
                     N = len(palpites_jogo)
                     t_c = jogo['time_casa'].upper()
                     t_f = jogo['time_fora'].upper()
@@ -684,7 +674,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     v_casa = sum(1 for c, f in palpites_jogo if c > f)
                     v_emp  = sum(1 for c, f in palpites_jogo if c == f)
                     v_fora = sum(1 for c, f in palpites_jogo if c < f)
-                    
                     pct_c = int(round((v_casa / N) * 100))
                     pct_e = int(round((v_emp / N) * 100))
                     pct_f = int(round((v_fora / N) * 100))
@@ -705,39 +694,26 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     bar_mf = "█" * int((med_f / max_med) * 8)
                     
                     html_card = f"<div style='background:#0F172A; border:1px solid #1E293B; border-radius:12px; padding:20px; margin-bottom:25px; color:#F8FAFC; font-family: sans-serif; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);'>"
-                    
                     html_card += f"<h3 style='text-align:center; color:#E2E8F0; letter-spacing: 2px; margin-top:0; margin-bottom:10px; font-size:18px;'>{t_c} x {t_f}</h3>"
                     html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; text-align:center; margin-bottom:5px;'>🏆 Palpite oficial do bolão</p>"
                     html_card += f"<p style='font-size:22px; font-weight:bold; color:#F8FAFC; text-align:center; margin:0 0 15px 0;'>{jogo['time_casa']} <span style='color:#F59E0B;'>{placar_oficial}</span> {jogo['time_fora']}</p>"
                     html_card += "<hr style='border: 0; border-top: 1px solid #1E293B; margin: 15px 0 20px 0;'>"
-                    
                     html_card += "<div style='display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px;'>"
-                    
-                    html_card += "<div style='flex: 1; min-width: 200px;'>"
-                    html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Quem vence?</p>"
+                    html_card += "<div style='flex: 1; min-width: 200px;'><p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Quem vence?</p>"
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#22C55E;'>{bar_c}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_c}%</div></div>"
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>Empate</div><div style='flex-grow: 1; color:#64748B;'>{bar_e}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_e}%</div></div>"
-                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#3B82F6;'>{bar_f}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_f}%</div></div>"
-                    html_card += "</div>"
-                    
-                    html_card += "<div style='flex: 1; min-width: 200px;'>"
-                    html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Placares mais apostados</p>"
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#3B82F6;'>{bar_f}</div><div style='width: 45px; text-align: right; margin-left: 8px;'>{pct_f}%</div></div></div>"
+                    html_card += "<div style='flex: 1; min-width: 200px;'><p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Placares mais apostados</p>"
                     for placar, count in top_placares:
                         bar_len = int((count / max_placar_count) * 8)
                         bar_p = "█" * max(1, bar_len)
                         html_card += f"<div style='display: flex; margin-bottom: 8px;'><div style='width: 40px; text-align: right; margin-right: 12px; color:#F8FAFC;'>{placar}</div><div style='flex-grow: 1; color:#F59E0B;'>{bar_p}</div><div style='width: 30px; text-align: left; color:#94A3B8; margin-left: 8px;'>{count}</div></div>"
                     html_card += "</div>"
-                    
-                    html_card += "<div style='flex: 1; min-width: 200px;'>"
-                    html_card += "<p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Média de gols</p>"
+                    html_card += "<div style='flex: 1; min-width: 200px;'><p style='color:#94A3B8; font-size:12px; text-transform:uppercase; margin-bottom:15px; border-bottom: 1px solid #1E293B; padding-bottom:5px;'>Média de gols</p>"
                     html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_casa']}</div><div style='flex-grow: 1; color:#94A3B8;'>{bar_mc}</div><div style='width: 30px; text-align: left; font-weight:bold; margin-left: 8px;'>{med_c:.1f}</div></div>"
-                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#94A3B8;'>{bar_mf}</div><div style='width: 30px; text-align: left; font-weight:bold; margin-left: 8px;'>{med_f:.1f}</div></div>"
-                    html_card += "</div>"
-
+                    html_card += f"<div style='display: flex; margin-bottom: 8px; font-size:14px;'><div style='width: 50px; text-align: right; margin-right: 12px;'>{jogo['time_fora']}</div><div style='flex-grow: 1; color:#94A3B8;'>{bar_mf}</div><div style='width: 30px; text-align: left; font-weight:bold; margin-left: 8px;'>{med_f:.1f}</div></div></div>"
                     html_card += "</div></div>"
-                    
                     st.markdown(html_card, unsafe_allow_html=True)
-            
             else:
                 if jogos_reais_do_dia:
                     st.markdown("### 🏟️ Resultados Oficiais")
@@ -753,7 +729,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
-
                 if jogos_reais_do_dia and melhor_pontuacao_dia > 0:
                     st.markdown("---")
                     st.markdown("### 🔥 Destaque da Rodada")
@@ -773,33 +748,15 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
 # --- TELA 3: PALPITES FINAIS E PREMIAÇÕES ---
 elif aba_selecionada == "🔮 Palpites Finais e Premiações":
     st.subheader("🔮 Palpites: Campeões e Artilheiro")
-    
-    if not st.session_state.ranking_processado:
-        st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
+    if not st.session_state.ranking_processado: st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
     else:
-        # Pega a lista processada e ordena alfabeticamente para ficar fácil de procurar os amigos
         dados = sorted(st.session_state.ranking_processado, key=lambda x: x['nome'].lower())
-        
-        # Dicionário tradutor: Nomes para Códigos de Imagem (Servidor FlagCDN)
-        mapa_bandeiras = {
-            "brasil": "br",
-            "frança": "fr",
-            "espanha": "es",
-            "inglaterra": "gb-eng",
-            "argentina": "ar",
-            "noruega": "no",
-            "portugal": "pt",
-            "holanda": "nl"
-        }
-        
+        mapa_bandeiras = {"brasil": "br", "frança": "fr", "espanha": "es", "inglaterra": "gb-eng", "argentina": "ar", "noruega": "no", "portugal": "pt", "holanda": "nl"}
         def obter_bandeira(nome_pais):
             if not nome_pais or nome_pais == "-": return "🏳️"
-            # Limpa o texto (tira espaços e deixa minúsculo) para achar no dicionário
             pais_limpo = str(nome_pais).strip().lower()
             codigo = mapa_bandeiras.get(pais_limpo)
-            if codigo:
-                # Retorna uma imagem da bandeira (funciona no Windows, Mac, Celular...)
-                return f"<img src='https://flagcdn.com/w20/{codigo}.png' style='width:20px; height:auto; vertical-align:middle; margin-right:4px; border-radius:2px;'>"
+            if codigo: return f"<img src='https://flagcdn.com/w20/{codigo}.png' style='width:20px; height:auto; vertical-align:middle; margin-right:4px; border-radius:2px;'>"
             return "🏳️"
         
         cols = st.columns(4)
@@ -807,12 +764,7 @@ elif aba_selecionada == "🔮 Palpites Finais e Premiações":
             with cols[idx % 4]:
                 top4 = p.get('top4', ['-', '-', '-', '-'])
                 artilheiro = p.get('artilheiro', '-')
-                
-                # Buscando as imagens das bandeiras para os 4 palpites
-                b1 = obter_bandeira(top4[0])
-                b2 = obter_bandeira(top4[1])
-                b3 = obter_bandeira(top4[2])
-                b4 = obter_bandeira(top4[3])
+                b1, b2, b3, b4 = obter_bandeira(top4[0]), obter_bandeira(top4[1]), obter_bandeira(top4[2]), obter_bandeira(top4[3])
                 
                 st.markdown(f"""
                 <div style='background:#0F172A; border:1px solid #1E293B; border-radius:8px; padding:15px; margin-bottom:15px; color:#F8FAFC;'>
@@ -829,3 +781,118 @@ elif aba_selecionada == "🔮 Palpites Finais e Premiações":
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
+
+# --- TELA 4: SIMULADOR ---
+elif aba_selecionada == "🎮 Simulador da Reta Final":
+    st.subheader("🎮 Simulador da Reta Final")
+    st.info("⚠️ **Observação:** Esta simulação calcula **apenas** os acertos de Premiação (Campeão, Vice, 3º, 4º) e Artilheiro. Ela **não** soma os pontos de placar dos jogos (Semifinais e Finais), pois focamos na pontuação principal das premiações.")
+
+    if not st.session_state.ranking_processado:
+        st.warning("👆 Clique no botão azul lá em cima para buscar os dados oficiais antes de simular.")
+    else:
+        st.markdown("### 1️⃣ Defina os confrontos das Semifinais")
+        times_opcoes = ["Espanha", "França", "Brasil", "Inglaterra", "Argentina", "Noruega", "Portugal", "Holanda", "Outro"]
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("#### ⚔️ Semifinal 1")
+            s1_t1 = st.selectbox("Time A:", times_opcoes, index=0, key='s1_t1')
+            s1_t2 = st.selectbox("Time B:", times_opcoes, index=1, key='s1_t2')
+            vencedor_s1 = st.radio("Quem avança para a Final?", [s1_t1, s1_t2], key='v_s1')
+        
+        with c2:
+            st.markdown("#### ⚔️ Semifinal 2")
+            s2_t1 = st.selectbox("Time C:", times_opcoes, index=2, key='s2_t1')
+            s2_t2 = st.selectbox("Time D:", times_opcoes, index=3, key='s2_t2')
+            vencedor_s2 = st.radio("Quem avança para a Final?", [s2_t1, s2_t2], key='v_s2')
+        
+        perdedor_s1 = s1_t2 if vencedor_s1 == s1_t1 else s1_t1
+        perdedor_s2 = s2_t2 if vencedor_s2 == s2_t1 else s2_t1
+        
+        st.divider()
+        st.markdown("### 2️⃣ Defina os Vencedores das Finais")
+        c3, c4 = st.columns(2)
+        with c3:
+            st.markdown("#### 🥉 Disputa de 3º Lugar")
+            terceiro = st.radio("Quem fica em 3º?", [perdedor_s1, perdedor_s2], key='v_3l')
+            quarto = perdedor_s2 if terceiro == perdedor_s1 else perdedor_s1
+            
+        with c4:
+            st.markdown("#### 🏆 Grande Final")
+            campeao = st.radio("Quem será o Campeão?", [vencedor_s1, vencedor_s2], key='v_fin')
+            vice = vencedor_s2 if campeao == vencedor_s1 else vencedor_s1
+            
+        st.divider()
+        st.markdown("### 3️⃣ Defina o Artilheiro")
+        artilheiro_sim = st.selectbox("Artilheiro do Torneio:", ["Kylian Mbappé", "Harry Kane", "Mikel Oyarzabal", "Julian Alvarez", "Outro"])
+        
+        st.write("")
+        if st.button("🚀 Calcular Tabela Simulada", type="primary", use_container_width=True):
+            
+            # Função para normalizar strings (Tira acento, maiúscula, espaço)
+            def norm(s):
+                if not s: return ""
+                return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').strip().lower()
+
+            sim_top4 = [norm(campeao), norm(vice), norm(terceiro), norm(quarto)]
+            s_art = norm(artilheiro_sim)
+            
+            lista_simulada = []
+            for p in st.session_state.ranking_processado:
+                pts_atuais = p['pontos']
+                pts_ganhos = 0
+                
+                # --- Lógica do Top 4 ---
+                p_top4 = [norm(t) for t in p.get('top4', ['-', '-', '-', '-'])]
+                for i in range(4):
+                    if p_top4[i] == '-' or p_top4[i] == "": continue
+                    if p_top4[i] == sim_top4[i]:
+                        pts_ganhos += 12 # Acertou em cheio a posição
+                    elif p_top4[i] in sim_top4:
+                        pts_ganhos += 8  # Acertou que tá no Top 4, mas errou a posição
+                        
+                # --- Lógica do Artilheiro ---
+                p_art = norm(p.get('artilheiro', '-'))
+                acertou_artilheiro = False
+                
+                if s_art != "outro" and p_art != "-" and p_art != "":
+                    if s_art in p_art or p_art in s_art: acertou_artilheiro = True
+                    if s_art == "kylian mbappe" and "mbappe" in p_art: acertou_artilheiro = True
+                    if s_art == "harry kane" and "kane" in p_art: acertou_artilheiro = True
+                    if s_art == "mikel oyarzabal" and "oyarzabal" in p_art: acertou_artilheiro = True
+                    if s_art == "julian alvarez" and "alvarez" in p_art: acertou_artilheiro = True
+                    
+                if acertou_artilheiro: pts_ganhos += 15
+                    
+                novo_total = pts_atuais + pts_ganhos
+                
+                sim_p = p.copy()
+                sim_p['pontos_atuais'] = pts_atuais
+                sim_p['pts_simulacao'] = pts_ganhos
+                sim_p['pontos_simulados'] = novo_total
+                lista_simulada.append(sim_p)
+                
+            # Ranqueando o Futuro
+            lista_simulada.sort(key=lambda x: (-x['pontos_simulados'], x['nome'].lower()))
+            
+            posicao_atual = 1
+            pontos_anteriores = None
+            for idx, participante in enumerate(lista_simulada):
+                if participante['pontos_simulados'] != pontos_anteriores: posicao_atual = idx + 1
+                pontos_anteriores = participante['pontos_simulados']
+                participante['posicao_sim'] = f"{posicao_atual}º Lugar"
+                
+                emoji = ""
+                if posicao_atual == 1: emoji = "🥇 "
+                elif posicao_atual == 2: emoji = "🥈 "
+                elif posicao_atual == 3: emoji = "🥉 "
+                participante['nome_exibicao'] = f"{emoji}{participante['nome']}"
+                
+                if idx < len(lista_simulada) - 1:
+                    dif = participante['pontos_simulados'] - lista_simulada[idx+1]['pontos_simulados']
+                    participante['dif_sim'] = f"+{dif}" if dif > 0 else "="
+                else:
+                    participante['dif_sim'] = "-"
+
+            st.markdown(gerar_tabela_simulacao_html(lista_simulada), unsafe_allow_html=True)
+            st.balloons()
