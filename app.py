@@ -777,8 +777,26 @@ elif aba_selecionada == "🔮 Palpites Finais e Premiações":
     if not st.session_state.ranking_processado:
         st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
     else:
-        # Pega a lista processada e ordena alfabeticamente para ficar fácil de procurar os amigos
+        # Pega a lista processada e ordena alfabeticamente
         dados = sorted(st.session_state.ranking_processado, key=lambda x: x['nome'].lower())
+        
+        # Dicionário tradutor de Nomes para Bandeiras
+        mapa_bandeiras = {
+            "brasil": "🇧🇷",
+            "frança": "🇫🇷",
+            "espanha": "🇪🇸",
+            "inglaterra": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+            "argentina": "🇦🇷",
+            "noruega": "🇳🇴",
+            "portugal": "🇵🇹",
+            "holanda": "🇳🇱"
+        }
+        
+        def obter_bandeira(nome_pais):
+            if not nome_pais or nome_pais == "-": return "🏳️"
+            # Limpa o texto (tira espaços e deixa minúsculo) para achar no dicionário
+            pais_limpo = str(nome_pais).strip().lower()
+            return mapa_bandeiras.get(pais_limpo, "🏳️")
         
         cols = st.columns(4)
         for idx, p in enumerate(dados):
@@ -786,14 +804,20 @@ elif aba_selecionada == "🔮 Palpites Finais e Premiações":
                 top4 = p.get('top4', ['-', '-', '-', '-'])
                 artilheiro = p.get('artilheiro', '-')
                 
+                # Buscando as bandeiras para os 4 palpites
+                b1 = obter_bandeira(top4[0])
+                b2 = obter_bandeira(top4[1])
+                b3 = obter_bandeira(top4[2])
+                b4 = obter_bandeira(top4[3])
+                
                 st.markdown(f"""
                 <div style='background:#0F172A; border:1px solid #1E293B; border-radius:8px; padding:15px; margin-bottom:15px; color:#F8FAFC;'>
                     <h4 style='margin-top:0; border-bottom:1px solid #334155; padding-bottom:10px; color:#38BDF8;'>👤 {p['nome']}</h4>
                     <div style='margin-bottom:15px; font-size:14px;'>
-                        <div style='margin-bottom:4px;'>🥇 1º {top4[0]}</div>
-                        <div style='margin-bottom:4px;'>🥈 2º {top4[1]}</div>
-                        <div style='margin-bottom:4px;'>🥉 3º {top4[2]}</div>
-                        <div style='margin-bottom:4px;'>🏅 4º {top4[3]}</div>
+                        <div style='margin-bottom:4px;'>{b1} <strong>1º</strong> {top4[0]}</div>
+                        <div style='margin-bottom:4px;'>{b2} <strong>2º</strong> {top4[1]}</div>
+                        <div style='margin-bottom:4px;'>{b3} <strong>3º</strong> {top4[2]}</div>
+                        <div style='margin-bottom:4px;'>{b4} <strong>4º</strong> {top4[3]}</div>
                     </div>
                     <div style='border-top:1px solid #334155; padding-top:10px;'>
                         <div style='font-size:12px; color:#94A3B8; text-transform:uppercase;'>👟 Artilheiro</div>
