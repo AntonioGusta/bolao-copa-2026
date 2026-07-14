@@ -408,7 +408,14 @@ st.divider()
 # ==============================================================================
 aba_selecionada = st.radio(
     "Navegação:",
-    ["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada", "🔮 Palpites Finais e Premiações", "🎮 Simulador da Reta Final", "🧠 Otimizador de Palpites (Top 10)"], # <--- ADICIONE AQUI
+    [
+        "🏆 Classificação e Resenha", 
+        "👀 Espiar Palpites da Rodada", 
+        "🔮 Palpites Finais e Premiações", 
+        "🎮 Simulador da Reta Final", 
+        "🧠 Otimizador de Palpites (Top 10)",
+        "📊 Matriz de Cenários Absolutos" # <--- NOVA ABA AQUI
+    ],
     horizontal=True,
     label_visibility="collapsed"
 )
@@ -1088,3 +1095,122 @@ elif aba_selecionada == "🧠 Otimizador de Palpites (Top 10)":
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
+
+
+# --- TELA 6: MATRIZ DE CENÁRIOS ABSOLUTOS ---
+elif aba_selecionada == "📊 Matriz de Cenários Absolutos":
+    st.subheader("📊 Matriz de Cenários Absolutos (Top 4 + Artilheiro)")
+    st.write("Esta aba não faz previsões ou sorteios. Ela calcula matematicamente as **72 combinações exatas** possíveis para a reta final e mostra quem será o Top 3 do bolão em cada uma delas.")
+
+    if not st.session_state.ranking_processado:
+        st.warning("👆 Clique em 'Atualizar Classificação' na primeira aba para carregar os dados oficiais.")
+    else:
+        import itertools
+        import pandas as pd
+        import unicodedata
+        
+        # Parâmetros de pontuação
+        PONTOS_ARTILHEIRO = 15
+        PONTOS_TOP4_EXATO = 12
+        PONTOS_TOP4_GRUPO = 8
+
+        st.markdown("### Selecione os 4 Semifinalistas")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: t1 = st.text_input("Time 1", value="França")
+        with c2: t2 = st.text_input("Time 2", value="Espanha")
+        with c3: t3 = st.text_input("Time 3", value="Argentina")
+        with c4: t4 = st.text_input("Time 4", value="Inglaterra")
+
+        if st.button("🧬 Gerar 72 Realidades", type="primary", use_container_width=True):
+            with st.spinner("Mapeando todos os futuros possíveis..."):
+                def norm(s): return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').strip().lower()
+                
+                semifinalistas = [t1, t2, t3, t4]
+                # Gera as 24 combinações possíveis de 1º, 2º, 3º e 4º lugar
+                combinacoes_top4 = list(itertools.permutations(semifinalistas))
+                
+                cenarios_artilharia = ["Mbappé", "Kane", "Outro"]
+                
+                # Prepara os dados de todos os participantes do bolão
+                participantes = []
+                for p in st.session_state.ranking_processado:
+                    top4_raw = p.get('top4', ['-','-','-','-'])
+                    while len(top4_raw) < 4: top4_raw.append('-')
+                    
+                    participantes.append({
+                        'nome': p['nome'],
+                        'pts_atuais': p['pontos'],
+                        'top4_palpite': [norm(x) for x in top4_raw],
+                        'art_palpite': norm(p.get('artilheiro', ''))
+                    })
+
+                resultados_matriz = []
+
+                # Testar os 72 cenários (24 de Top 4 x 3 de Artilheiros)
+                for top4_cenario in combinacoes_top4:
+                    top4_cenario_norm = [norm(x) for x in top4_cenario]
+                    
+                    for art_cenario in cenarios_artilharia:
+                        art_cenario_norm = norm(art_cenario)
+                        
+                        # Calcula a pontuação final de cada participante NESTE cenário
+                        ranking_cenario = []
+                        for part in participantes:
+                            pts = part['pts_atuais']
+                            
+                            # 1. Top 4
+                            for i in range(4):
+                                time_escolhido = part['top4_palpite'][i]
+                                if time_escolhido == "" or time_escolhido == "-": continue
+                                
+                                if time_escolhido == top4_cenario_norm[i]:
+                                    pts += PONTOS_TOP4_EXATO
+                                elif time_escolhido in top4_cenario_norm:
+                                    pts += PONTOS_TOP4_GRUPO
+                                    
+                            # 2. Artilheiro
+                            if art_cenario == "Outro":
+                                # Se der "Outro", ganha pontos quem NÃO botou Mbappé nem Kane
+                                if part['art_palpite'] not in [norm("Mbappé"), norm("Kane"), ""]:
+                                    pts += PONTOS_ARTILHEIRO
+                            else:
+                                # Se der Mbappé ou Kane
+                                if part['art_palpite'] == art_cenario_norm:
+                                    pts += PONTOS_ARTILHEIRO
+                                    
+                            ranking_cenario.append({'nome': part['nome'], 'pts': pts})
+                            
+                        # Ordena o ranking deste cenário para descobrir o pódio
+                        ranking_cenario.sort(key=lambda x: x['pts'], reverse=True)
+                        
+                        # Extrai o Top 3
+                        campeao = f"🥇 {ranking_cenario[0]['nome']} ({ranking_cenario[0]['pts']} pts)"
+                        vice = f"🥈 {ranking_cenario[1]['nome']} ({ranking_cenario[1]['pts']} pts)"
+                        terceiro = f"🥉 {ranking_cenario[2]['nome']} ({ranking_cenario[2]['pts']} pts)"
+                        
+                        # Salva a linha da tabela
+                        resultados_matriz.append({
+                            "Cenário do Artilheiro": art_cenario,
+                            "1º Lugar (Campeão)": top4_cenario[0],
+                            "2º Lugar (Vice)": top4_cenario[1],
+                            "3º Lugar": top4_cenario[2],
+                            "4º Lugar": top4_cenario[3],
+                            "🏆 Campeão do Bolão": campeao,
+                            "🥈 2º do Bolão": vice,
+                            "🥉 3º do Bolão": terceiro
+                        })
+
+                # Cria o DataFrame (Tabela)
+                df_resultados = pd.DataFrame(resultados_matriz)
+                
+                # Exibir as tabelas divididas por Artilheiro para ficar mais organizado na tela
+                st.success("✅ 72 Realidades calculadas com sucesso! (Desconsiderando os palpites de placares dos jogos faltantes)")
+                
+                tab_mbappe, tab_kane, tab_outro = st.tabs(["⚽ Artilheiro: Mbappé", "⚽ Artilheiro: Kane", "⚽ Artilheiro: Outro (Zebras)"])
+                
+                with tab_mbappe:
+                    st.dataframe(df_resultados[df_resultados["Cenário do Artilheiro"] == "Mbappé"].drop(columns=["Cenário do Artilheiro"]), use_container_width=True, hide_index=True)
+                with tab_kane:
+                    st.dataframe(df_resultados[df_resultados["Cenário do Artilheiro"] == "Kane"].drop(columns=["Cenário do Artilheiro"]), use_container_width=True, hide_index=True)
+                with tab_outro:
+                    st.dataframe(df_resultados[df_resultados["Cenário do Artilheiro"] == "Outro"].drop(columns=["Cenário do Artilheiro"]), use_container_width=True, hide_index=True)
