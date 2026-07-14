@@ -168,7 +168,7 @@ button[kind="primary"]:hover {
 if 'ranking_processado' not in st.session_state: st.session_state.ranking_processado = []
 if 'resumo_ontem' not in st.session_state: st.session_state.resumo_ontem = {}
 
-st.title("🏆 Apuração do Bolão da Copa 2026 (THE) - V2")
+st.title("🏆 Apuração do Bolão da Copa 2026 (THE)")
 st.write("Clique no botão abaixo para processar os palpites e atualizar o ranking em tempo real.")
 
 if st.button("🚀 Atualizar Classificação", type="primary"):
