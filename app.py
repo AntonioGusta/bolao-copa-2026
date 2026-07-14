@@ -909,116 +909,165 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
             st.markdown(gerar_tabela_simulacao_html(lista_simulada), unsafe_allow_html=True)
             st.balloons()
 
-# --- TELA 5: OTIMIZADOR DE PALPITES (INTELIGÊNCIA ARTIFICIAL) ---
+
+# --- TELA 5: OTIMIZADOR DE PALPITES (INTELIGÊNCIA ARTIFICIAL - V3 ULTIMATE) ---
 elif aba_selecionada == "🧠 Otimizador de Palpites (Top 10)":
-    st.subheader("🧠 Otimizador Matemático de Palpites (Hedge)")
-    st.write("Esta IA analisa o Top 10 atual, cruza com o Top 4 que eles registraram, deduz como eles vão apostar e simula 14.641 cenários para encontrar o palpite que maximiza SUA chance de ser campeão do bolão.")
+    st.subheader("🧠 Otimizador Estocástico (Monte Carlo) + Top 4 Completo")
+    st.write("Simula 5.000 multiversos considerando as Semifinais, a Disputa de 3º Lugar, a Grande Final, as posições exatas do Top 4 e os 15 pontos do Artilheiro.")
 
     if not st.session_state.ranking_processado:
-        st.warning("👆 Clique no botão azul 'Atualizar Classificação' lá em cima para buscar os dados oficiais antes de otimizar.")
+        st.warning("👆 Clique em 'Atualizar Classificação' na primeira aba para carregar os dados oficiais.")
     else:
-        # Pega apenas os 10 primeiros colocados
+        import random
+        import unicodedata
+        
+        PONTOS_ARTILHEIRO = 15 # Atualizado conforme sua regra
+        PONTOS_TOP4_EXATO = 12
+        PONTOS_TOP4_GRUPO = 8
+
         top10 = st.session_state.ranking_processado[:10]
         nomes_top10 = [p['nome'] for p in top10]
         
-        c1, c2, c3 = st.columns(3)
+        st.markdown("### ⚙️ Configuração do Cenário Atual")
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             meu_nome = st.selectbox("Qual é o seu nome no bolão?", nomes_top10)
         with c2:
-            st.markdown("**Semifinal 1**")
-            s1_casa = st.text_input("Time Casa (S1)", value="França")
-            s1_fora = st.text_input("Time Fora (S1)", value="Espanha")
+            s1_casa = st.text_input("Semi 1: Casa", value="França")
+            s1_fora = st.text_input("Semi 1: Fora", value="Espanha")
         with c3:
-            st.markdown("**Semifinal 2**")
-            s2_casa = st.text_input("Time Casa (S2)", value="Argentina")
-            s2_fora = st.text_input("Time Fora (S2)", value="Inglaterra")
+            s2_casa = st.text_input("Semi 2: Casa", value="Argentina")
+            s2_fora = st.text_input("Semi 2: Fora", value="Inglaterra")
+        with c4:
+            artilheiro_real_provavel = st.text_input("Quem deve ser o artilheiro real?", value="Mbappé")
             
-        if st.button("🚀 Rodar Motor de Otimização", type="primary", use_container_width=True):
-            with st.spinner("Analisando 14.641 combinações de multiverso..."):
-                def norm(s):
-                    if not s: return ""
-                    return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').strip().lower()
+        if st.button("🌌 Iniciar Simulação de 5.000 Universos", type="primary", use_container_width=True):
+            with st.spinner("Processando Semifinais, 3º Lugar, Finais e cruzando com o Top 4 de todos..."):
+                def norm(s): return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').strip().lower()
                 
                 t_s1_c, t_s1_f = norm(s1_casa), norm(s1_fora)
                 t_s2_c, t_s2_f = norm(s2_casa), norm(s2_fora)
+                art_real = norm(artilheiro_real_provavel)
 
-                # Placares mais comuns em copas para evitar travamento (0x0 a 3x1)
-                placares_testaveis = [(0,0), (1,0), (0,1), (1,1), (2,0), (0,2), (2,1), (1,2), (2,2), (3,1), (1,3)]
+                # Placares pesados: probabilidade realística para matar-mata de Copa
+                placares_prob = [
+                    (1,0)]*18 + [(0,1)]*18 + [(1,1)]*15 + [(0,0)]*10 + \
+                    [(2,1)]*10 + [(1,2)]*10 + [(2,0)]*8 + [(0,2)]*8 + \
+                    [(2,2)]*5 + [(3,1)]*3 + [(1,3)]*3 + [(3,0)]*2 + [(0,3)]*2
                 
-                # 1. DEDUZIR OS PALPITES DOS RIVAIS DO TOP 10
-                palpites_rivais = {}
+                # Os palpites "chaves" mais prováveis de acertar 7 ou 4 pontos nas Semis
+                placares_testaveis = [(0,0), (1,0), (0,1), (1,1), (2,0), (0,2), (2,1), (1,2)]
+                
+                # Probabilidade de ganho de pontos em um jogo aleatório futuro (0 a 7 pts)
+                # (Estatística comum de bolão: 45% de erro, 25% acerta só vencedor (2pts), 15% acerta vencedor+gol (4pts), 10% empate (3pts), 5% crava (7pts))
+                pts_futuros_prob = [0]*45 + [2]*25 + [3]*10 + [4]*15 + [7]*5
+
+                # 1. Preparar o Dicionário de Rivais
+                dados_jogadores = {}
                 for p in top10:
-                    if p['nome'] == meu_nome: continue
-                    top4_norm = [norm(t) for t in p.get('top4', ['-','-','-','-'])]
+                    # Garantindo que o array de Top 4 tem exatamente 4 posições (1º, 2º, 3º e 4º)
+                    top4_raw = p.get('top4', ['-','-','-','-'])
+                    # Preenche com vazio se a lista vier menor por algum erro
+                    while len(top4_raw) < 4: top4_raw.append('-')
+                    top4_norm = [norm(t) for t in top4_raw]
+                    
+                    art_palpite = norm(p.get('artilheiro', '')) 
                     
                     def deduzir_placar(time_c, time_f, t4):
-                        idx_c = t4.index(time_c) if time_c in t4 else 99
-                        idx_f = t4.index(time_f) if time_f in t4 else 99
-                        if idx_c < idx_f: return (2, 1) # Acha que o time da casa ganha
-                        elif idx_f < idx_c: return (1, 2) # Acha que o time de fora ganha
-                        else: return (1, 1) # Empate (não apostou em nenhum dos dois no top4)
+                        if time_c in t4 and time_f not in t4: return (1, 0)
+                        if time_f in t4 and time_c not in t4: return (0, 1)
+                        return (1, 1) # Aposta cautelosa
                         
-                    palpites_rivais[p['nome']] = {
+                    dados_jogadores[p['nome']] = {
                         's1': deduzir_placar(t_s1_c, t_s1_f, top4_norm),
                         's2': deduzir_placar(t_s2_c, t_s2_f, top4_norm),
                         'pts_base': p['pontos'],
-                        'top4': top4_norm
+                        'top4': top4_norm, # [1º (campeão), 2º (vice), 3º, 4º]
+                        'acertou_art': (art_palpite == art_real) and art_real != ""
                     }
-
-                meus_dados = next(p for p in top10 if p['nome'] == meu_nome)
-                meu_top4 = [norm(t) for t in meus_dados.get('top4', ['-','-','-','-'])]
-                meus_pts_base = meus_dados['pontos']
 
                 melhores_estrategias = []
 
-                # 2. TESTAR TODOS OS MEUS PALPITES POSSÍVEIS
+                # 2. Loop principal: Testar seus possíveis palpites de Semifinal
                 for meu_p_s1 in placares_testaveis:
                     for meu_p_s2 in placares_testaveis:
-                        vitorias_rank1 = 0
+                        vitorias_campeao = 0
+                        simulacoes = 5000
                         
-                        # 3. CONTRA TODOS OS RESULTADOS REAIS POSSÍVEIS
-                        for real_s1 in placares_testaveis:
-                            for real_s2 in placares_testaveis:
-                                
-                                # Simulando quem passa para calcular Top 4 projetado
-                                quem_passa_s1 = t_s1_c if real_s1[0] > real_s1[1] else (t_s1_f if real_s1[1] > real_s1[0] else t_s1_c) # simplificação penaltis
-                                quem_passa_s2 = t_s2_c if real_s2[0] > real_s2[1] else (t_s2_f if real_s2[1] > real_s2[0] else t_s2_c)
-                                
-                                def calc_proj_top4(top4_array):
-                                    pts = 0
-                                    if quem_passa_s1 in top4_array: pts += 8
-                                    if quem_passa_s2 in top4_array: pts += 8
-                                    return pts
+                        for _ in range(simulacoes):
+                            # Sorteio dos Placares do Universo
+                            real_s1 = random.choice(placares_prob)
+                            real_s2 = random.choice(placares_prob)
+                            real_terceiro = random.choice(placares_prob)
+                            real_final = random.choice(placares_prob)
+                            
+                            # Quem avança e quem cai nas Semis (Penaltis em caso de empate)
+                            passa_s1 = t_s1_c if real_s1[0] > real_s1[1] else (t_s1_f if real_s1[1] > real_s1[0] else random.choice([t_s1_c, t_s1_f]))
+                            cai_s1 = t_s1_f if passa_s1 == t_s1_c else t_s1_c
+                            
+                            passa_s2 = t_s2_c if real_s2[0] > real_s2[1] else (t_s2_f if real_s2[1] > real_s2[0] else random.choice([t_s2_c, t_s2_f]))
+                            cai_s2 = t_s2_f if passa_s2 == t_s2_c else t_s2_c
+                            
+                            # Disputa 3º Lugar e Final
+                            campeao = passa_s1 if real_final[0] > real_final[1] else (passa_s2 if real_final[1] > real_final[0] else random.choice([passa_s1, passa_s2]))
+                            vice = passa_s2 if campeao == passa_s1 else passa_s1
+                            
+                            terceiro = cai_s1 if real_terceiro[0] > real_terceiro[1] else (cai_s2 if real_terceiro[1] > real_terceiro[0] else random.choice([cai_s1, cai_s2]))
+                            quarto = cai_s2 if terceiro == cai_s1 else cai_s1
+                            
+                            # A lista exata do que aconteceu na realidade
+                            top4_realidade = [campeao, vice, terceiro, quarto]
 
-                                # Meus Pontos no cenário
-                                meu_total = meus_pts_base + calc_proj_top4(meu_top4)
-                                meu_total += calcular_pontos(real_s1[0], real_s1[1], meu_p_s1[0], meu_p_s1[1])
-                                meu_total += calcular_pontos(real_s2[0], real_s2[1], meu_p_s2[0], meu_p_s2[1])
+                            # Função para somar pontos de todos
+                            def simular_jogador(nome):
+                                d = dados_jogadores[nome]
+                                pts = d['pts_base']
                                 
-                                # Pontos dos rivais
-                                sou_lider = True
-                                for nome_rival, dados_rival in palpites_rivais.items():
-                                    rival_total = dados_rival['pts_base'] + calc_proj_top4(dados_rival['top4'])
-                                    rival_total += calcular_pontos(real_s1[0], real_s1[1], dados_rival['s1'][0], dados_rival['s1'][1])
-                                    rival_total += calcular_pontos(real_s2[0], real_s2[1], dados_rival['s2'][0], dados_rival['s2'][1])
-                                    
-                                    if rival_total > meu_total:
-                                        sou_lider = False
+                                # 1. Pontos do jogo das Semifinais
+                                palpite_s1 = meu_p_s1 if nome == meu_nome else d['s1']
+                                palpite_s2 = meu_p_s2 if nome == meu_nome else d['s2']
+                                
+                                pts += calcular_pontos(real_s1[0], real_s1[1], palpite_s1[0], palpite_s1[1])
+                                pts += calcular_pontos(real_s2[0], real_s2[1], palpite_s2[0], palpite_s2[1])
+                                
+                                # 2. Variância estatística para os jogos da Final e 3º Lugar (já que ninguem deu palpite de jogo ainda)
+                                pts += random.choice(pts_futuros_prob) # Jogo da Final
+                                pts += random.choice(pts_futuros_prob) # Jogo do 3º Lugar
+                                
+                                # 3. Matemática rigorosa do Top 4 (12 pts na mosca, 8 pts se tiver no grupo)
+                                for i in range(4):
+                                    time_palpite = d['top4'][i]
+                                    if time_palpite == '-' or time_palpite == "": continue
+                                    if time_palpite == top4_realidade[i]:
+                                        pts += PONTOS_TOP4_EXATO
+                                    elif time_palpite in top4_realidade:
+                                        pts += PONTOS_TOP4_GRUPO
+                                
+                                # 4. Artilheiro (Ouro)
+                                if d['acertou_art']: pts += PONTOS_ARTILHEIRO
+                                return pts
+                            
+                            meus_pontos_finais = simular_jogador(meu_nome)
+                            sou_campeao = True
+                            
+                            for rival in dados_jogadores:
+                                if rival != meu_nome:
+                                    if simular_jogador(rival) >= meus_pontos_finais:
+                                        sou_campeao = False
                                         break
                                         
-                                if sou_lider: vitorias_rank1 += 1
+                            if sou_campeao: vitorias_campeao += 1
                                 
-                        taxa_sucesso = (vitorias_rank1 / (len(placares_testaveis) * len(placares_testaveis))) * 100
+                        taxa_titulo = (vitorias_campeao / simulacoes) * 100
                         melhores_estrategias.append({
-                            's1': meu_p_s1, 's2': meu_p_s2, 'taxa': taxa_sucesso
+                            's1': meu_p_s1, 's2': meu_p_s2, 'taxa': taxa_titulo
                         })
 
-                # 4. EXIBIR RESULTADOS
                 melhores_estrategias.sort(key=lambda x: x['taxa'], reverse=True)
                 
-                st.success("✅ Simulação concluída com sucesso!")
-                st.markdown("### 🎯 Melhores Palpites para Você Enviar")
-                st.write("Estas combinações maximizam a sua chance de terminar a semifinal em **1º lugar** considerando a pontuação e os favoritos dos seus adversários.")
+                st.success("✅ O multiverso colapsou! Simulação finalizada.")
+                st.markdown("### 🏆 Melhores Palpites para as Semifinais (Hedge)")
+                st.write("Baseado nas projeções completas até o final da competição, se você registrar estes placares hoje, maximizará suas chances de terminar em **1º Geral**.")
                 
                 cols_res = st.columns(3)
                 for i in range(3):
@@ -1026,15 +1075,15 @@ elif aba_selecionada == "🧠 Otimizador de Palpites (Top 10)":
                         estr = melhores_estrategias[i]
                         with cols_res[i]:
                             st.markdown(f"""
-                            <div style='background:#0F172A; border:2px solid #38BDF8; border-radius:8px; padding:15px; text-align:center;'>
-                                <h2 style='color:#38BDF8; margin:0;'>{i+1}ª Opção</h2>
-                                <p style='color:#94A3B8; font-size:14px; margin-bottom:15px;'>Win Rate: {estr['taxa']:.1f}%</p>
+                            <div style='background:#0F172A; border:2px solid #F59E0B; border-radius:8px; padding:15px; text-align:center;'>
+                                <h2 style='color:#F59E0B; margin:0;'>{i+1}ª Opção</h2>
+                                <p style='color:#94A3B8; font-size:14px; margin-bottom:15px;'>Win Rate Geral: <b>{estr['taxa']:.1f}%</b></p>
                                 <div style='background:#1E293B; padding:10px; border-radius:4px; margin-bottom:10px;'>
-                                    <span style='font-size:12px; color:#CBD5E1;'>S1 ({s1_casa[:3]} x {s1_fora[:3]})</span><br>
+                                    <span style='font-size:12px; color:#CBD5E1;'>S1: {s1_casa[:3]} x {s1_fora[:3]}</span><br>
                                     <strong style='font-size:18px; color:#F8FAFC;'>{estr['s1'][0]} x {estr['s1'][1]}</strong>
                                 </div>
                                 <div style='background:#1E293B; padding:10px; border-radius:4px;'>
-                                    <span style='font-size:12px; color:#CBD5E1;'>S2 ({s2_casa[:3]} x {s2_fora[:3]})</span><br>
+                                    <span style='font-size:12px; color:#CBD5E1;'>S2: {s2_casa[:3]} x {s2_fora[:3]}</span><br>
                                     <strong style='font-size:18px; color:#F8FAFC;'>{estr['s2'][0]} x {estr['s2'][1]}</strong>
                                 </div>
                             </div>
