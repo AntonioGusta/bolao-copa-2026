@@ -35,7 +35,7 @@ def carregar_palpites_em_cache(file_id):
     bytes_io.seek(0)
     
     wb = openpyxl.load_workbook(bytes_io, data_only=True)
-    palpites = {'fase1': {}, 'fase2': {}}
+    palpites = {'fase1': {}, 'fase2': {}, 'premios': {'artilheiro': '-', 'top4': ['-', '-', '-', '-']}}
     
     # Carrega a Fase de Grupos
     if 'FASE 1' in wb.sheetnames:
@@ -49,6 +49,23 @@ def carregar_palpites_em_cache(file_id):
         ws2 = wb[nome_aba_fase2]
         for r in range(3, 100):
             palpites['fase2'][r] = (ws2[f'E{r}'].value, ws2[f'G{r}'].value)
+            
+    # Carrega Premiações e Campeões
+    if 'Dados Pessoais' in wb.sheetnames:
+        ws3 = wb['Dados Pessoais']
+        artilheiro = ws3['D13'].value
+        top1 = ws3['D17'].value
+        top2 = ws3['D18'].value
+        top3 = ws3['D19'].value
+        top4 = ws3['D20'].value
+        
+        palpites['premios']['artilheiro'] = str(artilheiro).strip() if artilheiro else "-"
+        palpites['premios']['top4'] = [
+            str(top1).strip() if top1 else "-",
+            str(top2).strip() if top2 else "-",
+            str(top3).strip() if top3 else "-",
+            str(top4).strip() if top4 else "-"
+        ]
             
     wb.close()
     return palpites
@@ -77,8 +94,7 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     
     html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
-    # --- CABEÇALHO ATUALIZADO COM QUARTAS ---
-    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Grupos</th><th style='padding: 8px; color:#94A3B8;'>Pré-Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Quartas</th><th style='padding: 8px; font-size: 15px;'>Total</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
+    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Grupos</th><th style='padding: 8px; color:#94A3B8;'>Pré-Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Quartas</th><th style='padding: 8px; color:#94A3B8;'>Finais</th><th style='padding: 8px; font-size: 15px;'>Total</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
     html += "</thead><tbody>"
 
     for p in participantes:
@@ -91,11 +107,11 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
         html += f"<td style='padding: 6px; font-size: 13px;'>{p.get('var_html', '➖')}</td>"
         html += f"<td style='text-align: left; padding: 6px;'>{p.get('nome_exibicao', p['nome'])}</td>"
         
-        # --- COLUNAS DE PONTOS ---
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_grupos', 0)}</td>"
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_pre_oitavas', 0)}</td>"
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_oitavas', 0)}</td>"
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_quartas', 0)}</td>"
+        html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_finais', 0)}</td>"
         html += f"<td style='padding: 6px; font-weight: bold; font-size: 15px; color:#F59E0B;'>{p['pontos']}</td>"
         
         html += f"<td style='padding: 6px; font-size: 12px; color:#64748B;'>{p.get('dif', '-')}</td>"
@@ -208,7 +224,11 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 arquivo_palpite = f"{nome}.xlsx"
                 
                 if arquivo_palpite not in mapa_arquivos:
-                    lista_ranking.append({'nome': nome, 'pontos': 0, 'pts_grupos': 0, 'pts_pre_oitavas': 0, 'pts_oitavas': 0, 'pts_quartas': 0})
+                    lista_ranking.append({
+                        'nome': nome, 'pontos': 0, 'pts_grupos': 0, 'pts_pre_oitavas': 0, 
+                        'pts_oitavas': 0, 'pts_quartas': 0, 'pts_finais': 0,
+                        'artilheiro': '-', 'top4': ['-', '-', '-', '-']
+                    })
                     continue
                     
                 id_part = mapa_arquivos[arquivo_palpite]
@@ -218,13 +238,13 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 pts_pre_oitavas = 0
                 pts_oitavas = 0
                 pts_quartas = 0
+                pts_finais = 0
                 pts_ont = 0
                 pts_ant = 0
                 
                 # Pontuação Fase 1
                 for r, (g_m_real, g_v_real) in resultados_reais_f1.items():
                     if g_m_real is None or g_v_real is None: continue
-                    
                     p_casa, p_fora = palpites['fase1'].get(r, (None, None))
                     pts = calcular_pontos(g_m_real, g_v_real, p_casa, p_fora)
                     pts_grupos += pts
@@ -240,17 +260,13 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 # Pontuação Mata-Mata
                 for r, (g_m_real, g_v_real) in resultados_reais_f2.items():
                     if g_m_real is None or g_v_real is None: continue
-                    
                     p_casa, p_fora = palpites['fase2'].get(r, (None, None))
                     pts = calcular_pontos(g_m_real, g_v_real, p_casa, p_fora)
                     
-                    # FISCAL DE TRÂNSITO: Separando as pontuações pelas linhas
-                    if 3 <= r <= 18:
-                        pts_pre_oitavas += pts
-                    elif 22 <= r <= 29:
-                        pts_oitavas += pts
-                    elif 33 <= r <= 36:
-                        pts_quartas += pts
+                    if 3 <= r <= 18: pts_pre_oitavas += pts
+                    elif 22 <= r <= 29: pts_oitavas += pts
+                    elif 33 <= r <= 36: pts_quartas += pts
+                    elif r in [40, 41, 45, 49]: pts_finais += pts
                     
                     d_jogo = datas_jogos_f2.get(r)
                     if d_jogo:
@@ -260,7 +276,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                         pts_ont += pts
                         pts_ant += pts
                         
-                pts_total_live = pts_grupos + pts_pre_oitavas + pts_oitavas + pts_quartas
+                pts_total_live = pts_grupos + pts_pre_oitavas + pts_oitavas + pts_quartas + pts_finais
                 
                 lista_ranking.append({
                     'nome': nome, 
@@ -268,7 +284,10 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     'pts_grupos': pts_grupos,
                     'pts_pre_oitavas': pts_pre_oitavas,
                     'pts_oitavas': pts_oitavas,
-                    'pts_quartas': pts_quartas
+                    'pts_quartas': pts_quartas,
+                    'pts_finais': pts_finais,
+                    'artilheiro': palpites.get('premios', {}).get('artilheiro', '-'),
+                    'top4': palpites.get('premios', {}).get('top4', ['-', '-', '-', '-'])
                 })
                 
                 lista_ontem.append({'nome': nome, 'pontos': pts_ont})
@@ -376,7 +395,7 @@ st.divider()
 # ==============================================================================
 aba_selecionada = st.radio(
     "Navegação:",
-    ["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada"],
+    ["🏆 Classificação e Resenha", "👀 Espiar Palpites da Rodada", "🔮 Palpites Finais e Premiações"],
     horizontal=True,
     label_visibility="collapsed"
 )
@@ -390,7 +409,7 @@ if aba_selecionada == "🏆 Classificação e Resenha":
         resumo = st.session_state.get('resumo_ontem', {})
         N = len(dados)
         
-        # --- CARDS DE RESUMO (LÍDER, SUBIDA, QUEDA) ---
+        # --- CARDS DE RESUMO ---
         if dados:
             lider = dados[0]
             col_c1, col_c2, col_c3 = st.columns(3)
@@ -457,7 +476,6 @@ if aba_selecionada == "🏆 Classificação e Resenha":
         profissionais, amadores = dados[:idx_prof], dados[idx_prof:idx_amad]
         peladeiros, lanterna = dados[idx_amad:idx_lant], dados[idx_lant:]
         
-        # Linha 1: Duas colunas para os melhores
         col1, col2 = st.columns(2)
         with col1:
             if profissionais: st.markdown(gerar_tabela_html(profissionais, "Profissionais", "- Elite do Pitaco -", "#166534", [1, 2, 3, 4, 5]), unsafe_allow_html=True)
@@ -466,7 +484,6 @@ if aba_selecionada == "🏆 Classificação e Resenha":
             
         st.write("---")
         
-        # Linha 2: Duas colunas para o fundo da tabela
         col3, col4 = st.columns(2)
         with col3:
             if peladeiros: st.markdown(gerar_tabela_html(peladeiros, "Peladeiros", "- Especialistas em Errar -"), unsafe_allow_html=True)
@@ -515,7 +532,6 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                     except: pesq_limpa = pesq_bruta
                 else: pesq_limpa = pesq_bruta
                 
-                # --- Lógica da Data: Fase 1 (<= 27/6) vs Mata-Mata (>= 28/6) ---
                 is_mata_mata = False
                 if dia_pesq and mes_pesq:
                     if mes_pesq > 6 or (mes_pesq == 6 and dia_pesq >= 28):
@@ -753,3 +769,35 @@ elif aba_selecionada == "👀 Espiar Palpites da Rodada":
                 for idx, painel in enumerate(dados_painel):
                     with cols_grid[idx % 3]:
                         with st.expander(painel['cabecalho']): st.markdown(painel['cards_html'], unsafe_allow_html=True)
+
+# --- TELA 3: PALPITES FINAIS E PREMIAÇÕES ---
+elif aba_selecionada == "🔮 Palpites Finais e Premiações":
+    st.subheader("🔮 Palpites: Campeões e Artilheiro")
+    
+    if not st.session_state.ranking_processado:
+        st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
+    else:
+        # Pega a lista processada e ordena alfabeticamente para ficar fácil de procurar os amigos
+        dados = sorted(st.session_state.ranking_processado, key=lambda x: x['nome'].lower())
+        
+        cols = st.columns(4)
+        for idx, p in enumerate(dados):
+            with cols[idx % 4]:
+                top4 = p.get('top4', ['-', '-', '-', '-'])
+                artilheiro = p.get('artilheiro', '-')
+                
+                st.markdown(f"""
+                <div style='background:#0F172A; border:1px solid #1E293B; border-radius:8px; padding:15px; margin-bottom:15px; color:#F8FAFC;'>
+                    <h4 style='margin-top:0; border-bottom:1px solid #334155; padding-bottom:10px; color:#38BDF8;'>👤 {p['nome']}</h4>
+                    <div style='margin-bottom:15px; font-size:14px;'>
+                        <div style='margin-bottom:4px;'>🥇 1º {top4[0]}</div>
+                        <div style='margin-bottom:4px;'>🥈 2º {top4[1]}</div>
+                        <div style='margin-bottom:4px;'>🥉 3º {top4[2]}</div>
+                        <div style='margin-bottom:4px;'>🏅 4º {top4[3]}</div>
+                    </div>
+                    <div style='border-top:1px solid #334155; padding-top:10px;'>
+                        <div style='font-size:12px; color:#94A3B8; text-transform:uppercase;'>👟 Artilheiro</div>
+                        <div style='font-weight:bold; font-size:14px; color:#F59E0B;'>⚽ {artilheiro}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
