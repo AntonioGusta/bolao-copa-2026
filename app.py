@@ -334,6 +334,9 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             m_subida = max(var_ontem_cards.values()) if var_ontem_cards else 0
             m_queda = min(var_ontem_cards.values()) if var_ontem_cards else 0
             
+            h_sub = [n for n, v in var_ontem_cards.items() if v == m_subida] if m_subida > 0 else []
+            v_que = [n for n, v in var_ontem_cards.items() if v == m_queda] if m_queda < 0 else []
+            
             st.session_state.resumo_ontem = {
                 "data_str": f"{ontem_date.day:02d}/{ontem_date.month:02d}",
                 "maior_subida": {"nomes": h_sub, "valor": m_subida},
@@ -399,23 +402,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
         except Exception as e: st.error(f"Ocorreu um erro no processamento: {e}")
 
 st.divider()
-
-# ==============================================================================
-# FUNÇÕES DE BANDEIRAS GLOBAIS (Usadas nas Abas 3 e 4)
-# ==============================================================================
-mapa_bandeiras = {
-    "brasil": "br", "frança": "fr", "espanha": "es", 
-    "inglaterra": "gb-eng", "argentina": "ar", 
-    "noruega": "no", "portugal": "pt", "holanda": "nl"
-}
-
-def obter_bandeira(nome_pais):
-    if not nome_pais or nome_pais == "-": return "🏳️"
-    pais_limpo = str(nome_pais).strip().lower()
-    codigo = mapa_bandeiras.get(pais_limpo)
-    if codigo: 
-        return f"<img src='https://flagcdn.com/w20/{codigo}.png' style='width:20px; height:auto; vertical-align:middle; margin-right:4px; border-radius:2px;'>"
-    return "🏳️"
 
 # ==============================================================================
 # NAVEGAÇÃO SEGURA (CONTORNO DO BUG DE ABAS DO STREAMLIT)
@@ -765,6 +751,13 @@ elif aba_selecionada == "🔮 Palpites Finais e Premiações":
     if not st.session_state.ranking_processado: st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
     else:
         dados = sorted(st.session_state.ranking_processado, key=lambda x: x['nome'].lower())
+        mapa_bandeiras = {"brasil": "br", "frança": "fr", "espanha": "es", "inglaterra": "gb-eng", "argentina": "ar", "noruega": "no", "portugal": "pt", "holanda": "nl"}
+        def obter_bandeira(nome_pais):
+            if not nome_pais or nome_pais == "-": return "🏳️"
+            pais_limpo = str(nome_pais).strip().lower()
+            codigo = mapa_bandeiras.get(pais_limpo)
+            if codigo: return f"<img src='https://flagcdn.com/w20/{codigo}.png' style='width:20px; height:auto; vertical-align:middle; margin-right:4px; border-radius:2px;'>"
+            return "🏳️"
         
         cols = st.columns(4)
         for idx, p in enumerate(dados):
@@ -797,19 +790,32 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
     if not st.session_state.ranking_processado:
         st.warning("👆 Clique no botão azul lá em cima para buscar os dados oficiais antes de simular.")
     else:
+        # Dicionário e função de apoio para criar os banners HTML dinâmicos com bandeiras
+        mapa_bandeiras_sim = {"França": "fr", "Espanha": "es", "Argentina": "ar", "Inglaterra": "gb-eng"}
+        def criar_banner_confronto(time1, time2):
+            cod1 = mapa_bandeiras_sim.get(time1, "")
+            cod2 = mapa_bandeiras_sim.get(time2, "")
+            img1 = f"<img src='https://flagcdn.com/w40/{cod1}.png' style='height:20px; vertical-align:middle; border-radius:3px; margin-right:8px;'>" if cod1 else ""
+            img2 = f"<img src='https://flagcdn.com/w40/{cod2}.png' style='height:20px; vertical-align:middle; border-radius:3px; margin-left:8px;'>" if cod2 else ""
+            return f"""
+            <div style="background:#1E293B; border:1px solid #334155; padding:12px; border-radius:8px; text-align:center; font-size:18px; font-weight:bold; color:#F8FAFC; margin-bottom:15px; display:flex; justify-content:center; align-items:center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                {img1} <span style="margin: 0 10px;">{time1} <span style="color:#60A5FA;">x</span> {time2}</span> {img2}
+            </div>
+            """
+
         st.markdown("### 1️⃣ Defina os vencedores das Semifinais")
         
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("#### ⚔️ Semifinal 1")
-            st.markdown(f"<div style='font-size:16px; margin-bottom:10px; display:flex; align-items:center;'>{obter_bandeira('França')} França <strong style='margin:0 8px;'> x </strong> {obter_bandeira('Espanha')} Espanha</div>", unsafe_allow_html=True)
-            vencedor_s1 = st.radio("Quem avança para a Final? (S1)", ["França", "Espanha"], key='v_s1', label_visibility="collapsed")
+            st.markdown(criar_banner_confronto("França", "Espanha"), unsafe_allow_html=True)
+            vencedor_s1 = st.radio("Quem avança para a Final?", ["França", "Espanha"], key='v_s1')
             perdedor_s1 = "Espanha" if vencedor_s1 == "França" else "França"
         
         with c2:
             st.markdown("#### ⚔️ Semifinal 2")
-            st.markdown(f"<div style='font-size:16px; margin-bottom:10px; display:flex; align-items:center;'>{obter_bandeira('Argentina')} Argentina <strong style='margin:0 8px;'> x </strong> {obter_bandeira('Inglaterra')} Inglaterra</div>", unsafe_allow_html=True)
-            vencedor_s2 = st.radio("Quem avança para a Final? (S2)", ["Argentina", "Inglaterra"], key='v_s2', label_visibility="collapsed")
+            st.markdown(criar_banner_confronto("Argentina", "Inglaterra"), unsafe_allow_html=True)
+            vencedor_s2 = st.radio("Quem avança para a Final?", ["Argentina", "Inglaterra"], key='v_s2')
             perdedor_s2 = "Inglaterra" if vencedor_s2 == "Argentina" else "Argentina"
         
         st.divider()
@@ -817,14 +823,14 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
         c3, c4 = st.columns(2)
         with c3:
             st.markdown("#### 🥉 Disputa de 3º Lugar")
-            st.markdown(f"<div style='font-size:16px; margin-bottom:10px; display:flex; align-items:center;'>{obter_bandeira(perdedor_s1)} {perdedor_s1} <strong style='margin:0 8px;'> x </strong> {obter_bandeira(perdedor_s2)} {perdedor_s2}</div>", unsafe_allow_html=True)
-            terceiro = st.radio("Quem fica em 3º?", [perdedor_s1, perdedor_s2], key='v_3l', label_visibility="collapsed")
+            st.markdown(criar_banner_confronto(perdedor_s1, perdedor_s2), unsafe_allow_html=True)
+            terceiro = st.radio("Quem fica em 3º?", [perdedor_s1, perdedor_s2], key='v_3l')
             quarto = perdedor_s2 if terceiro == perdedor_s1 else perdedor_s1
             
         with c4:
             st.markdown("#### 🏆 Grande Final")
-            st.markdown(f"<div style='font-size:16px; margin-bottom:10px; display:flex; align-items:center;'>{obter_bandeira(vencedor_s1)} {vencedor_s1} <strong style='margin:0 8px;'> x </strong> {obter_bandeira(vencedor_s2)} {vencedor_s2}</div>", unsafe_allow_html=True)
-            campeao = st.radio("Quem será o Campeão?", [vencedor_s1, vencedor_s2], key='v_fin', label_visibility="collapsed")
+            st.markdown(criar_banner_confronto(vencedor_s1, vencedor_s2), unsafe_allow_html=True)
+            campeao = st.radio("Quem será o Campeão?", [vencedor_s1, vencedor_s2], key='v_fin')
             vice = vencedor_s2 if campeao == vencedor_s1 else vencedor_s1
             
         st.divider()
@@ -834,10 +840,12 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
         st.write("")
         if st.button("🚀 Calcular Tabela Simulada", type="primary", use_container_width=True):
             
+            # Função para normalizar strings (Tira acento, maiúscula, espaço)
             def norm(s):
                 if not s: return ""
                 return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').strip().lower()
 
+            # Como usamos apenas texto puro nos inputs, passamos as variáveis diretas sem "remover_bandeira"
             sim_top4 = [norm(campeao), norm(vice), norm(terceiro), norm(quarto)]
             s_art = norm(artilheiro_sim)
             
