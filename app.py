@@ -1097,7 +1097,6 @@ elif aba_selecionada == "🧠 Otimizador de Palpites (Top 10)":
                             """, unsafe_allow_html=True)
 
 
-
 # --- TELA 6: MATRIZ DE CENÁRIOS ABSOLUTOS ---
 elif aba_selecionada == "📊 Matriz de Cenários Absolutos":
     st.subheader("📊 Matriz de Cenários Absolutos (Final e 3º Lugar)")
@@ -1177,13 +1176,11 @@ elif aba_selecionada == "📊 Matriz de Cenários Absolutos":
                                 elif time_escolhido in top4_cenario_norm:
                                     pts += PONTOS_TOP4_GRUPO
                                     
-                            # Pontos do Artilheiro
-                            if art_cenario == "Outro":
-                                if part['art_palpite'] not in [norm("Mbappé"), norm("Kane"), ""]:
-                                    pts += PONTOS_ARTILHEIRO
-                            else:
+                            # Pontos do Artilheiro (CORRIGIDO)
+                            if art_cenario != "Outro":
                                 if part['art_palpite'] == art_cenario_norm:
                                     pts += PONTOS_ARTILHEIRO
+                            # Se for "Outro", ninguém ganha os 15 pontos.
                                     
                             ranking_cenario.append({'nome': part['nome'], 'pts': pts})
                             
@@ -1211,7 +1208,7 @@ elif aba_selecionada == "📊 Matriz de Cenários Absolutos":
                 
                 st.success("✅ 12 Realidades calculadas com sucesso! Você está olhando para o gabarito final do bolão.")
                 
-                tab_mbappe, tab_kane, tab_outro = st.tabs(["⚽ Artilheiro: Mbappé", "⚽ Artilheiro: Kane", "⚽ Artilheiro: Outro (Zebra)"])
+                tab_mbappe, tab_kane, tab_outro = st.tabs(["⚽ Artilheiro: Mbappé", "⚽ Artilheiro: Kane", "⚽ Artilheiro: Ninguém acerta (Zebra)"])
                 
                 with tab_mbappe:
                     st.dataframe(df_resultados[df_resultados["Cenário do Artilheiro"] == "Mbappé"].drop(columns=["Cenário do Artilheiro"]), use_container_width=True, hide_index=True)
