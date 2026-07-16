@@ -1100,8 +1100,8 @@ elif aba_selecionada == "🧠 Otimizador de Palpites (Top 10)":
 
 # --- TELA 6: MATRIZ DE CENÁRIOS ABSOLUTOS ---
 elif aba_selecionada == "📊 Matriz de Cenários Absolutos":
-    st.subheader("📊 Matriz de Cenários Absolutos (Chaveamento Real)")
-    st.write("Esta aba calcula matematicamente as **48 combinações possíveis** para a reta final, respeitando estritamente o chaveamento (vencedores vão pra final, perdedores pro 3º lugar), e mostra quem será o Top 3 do bolão.")
+    st.subheader("📊 Matriz de Cenários Absolutos (Final e 3º Lugar)")
+    st.write("A competição avançou! Esta aba calcula as **12 combinações exatas e definitivas** possíveis para o fim do torneio, considerando quem leva o título, quem fica em 3º e o artilheiro.")
 
     if not st.session_state.ranking_processado:
         st.warning("👆 Clique em 'Atualizar Classificação' na primeira aba para carregar os dados oficiais.")
@@ -1114,30 +1114,29 @@ elif aba_selecionada == "📊 Matriz de Cenários Absolutos":
         PONTOS_TOP4_EXATO = 12
         PONTOS_TOP4_GRUPO = 8
 
-        st.markdown("### Selecione os Confrontos das Semifinais")
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: t1 = st.text_input("Semi 1: Time 1", value="França")
-        with c2: t2 = st.text_input("Semi 1: Time 2", value="Espanha")
-        with c3: t3 = st.text_input("Semi 2: Time 1", value="Argentina")
-        with c4: t4 = st.text_input("Semi 2: Time 2", value="Inglaterra")
+        st.markdown("### 🏆 Confrontos Finais")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("#### Grande Final")
+            t_final_1 = st.text_input("Final: Time A", value="Argentina")
+            t_final_2 = st.text_input("Final: Time B", value="Espanha")
+        with c2:
+            st.markdown("#### Disputa de 3º Lugar")
+            t_terc_1 = st.text_input("3º Lugar: Time A", value="França")
+            t_terc_2 = st.text_input("3º Lugar: Time B", value="Inglaterra")
 
-        if st.button("🧬 Gerar 48 Realidades Válidas", type="primary", use_container_width=True):
-            with st.spinner("Mapeando todos os futuros possíveis..."):
+        if st.button("🧬 Gerar 12 Realidades Definitivas", type="primary", use_container_width=True):
+            with st.spinner("Mapeando os cenários finais do bolão..."):
                 def norm(s): return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').strip().lower()
                 
-                # 1. CRIAR AS COMBINAÇÕES RESPEITANDO O CHAVEAMENTO
+                # 1. CRIAR AS COMBINAÇÕES DA RETA FINAL (Apenas 4 de Top 4)
                 combinacoes_top4 = []
                 
-                # Cenários de quem passa e quem cai na Semi 1 (t1 x t2)
-                for vencedor_s1, perdedor_s1 in [(t1, t2), (t2, t1)]:
-                    # Cenários de quem passa e quem cai na Semi 2 (t3 x t4)
-                    for vencedor_s2, perdedor_s2 in [(t3, t4), (t4, t3)]:
-                        
-                        # Disputa da Final (1º e 2º lugar)
-                        for campeao, vice in [(vencedor_s1, vencedor_s2), (vencedor_s2, vencedor_s1)]:
-                            # Disputa de 3º Lugar (3º e 4º lugar)
-                            for terceiro, quarto in [(perdedor_s1, perdedor_s2), (perdedor_s2, perdedor_s1)]:
-                                combinacoes_top4.append((campeao, vice, terceiro, quarto))
+                # Disputa da Final (Quem é o campeão e quem é o vice)
+                for campeao, vice in [(t_final_1, t_final_2), (t_final_2, t_final_1)]:
+                    # Disputa de 3º Lugar (Quem é o 3º e quem é o 4º)
+                    for terceiro, quarto in [(t_terc_1, t_terc_2), (t_terc_2, t_terc_1)]:
+                        combinacoes_top4.append((campeao, vice, terceiro, quarto))
                 
                 cenarios_artilharia = ["Mbappé", "Kane", "Outro"]
                 
@@ -1156,7 +1155,7 @@ elif aba_selecionada == "📊 Matriz de Cenários Absolutos":
 
                 resultados_matriz = []
 
-                # 3. TESTAR OS 48 CENÁRIOS (16 de Top 4 x 3 de Artilheiros)
+                # 3. TESTAR OS 12 CENÁRIOS (4 de Top 4 x 3 de Artilheiros)
                 for top4_cenario in combinacoes_top4:
                     top4_cenario_norm = [norm(x) for x in top4_cenario]
                     
@@ -1210,7 +1209,7 @@ elif aba_selecionada == "📊 Matriz de Cenários Absolutos":
                 # 4. CRIAR AS TABELAS
                 df_resultados = pd.DataFrame(resultados_matriz)
                 
-                st.success("✅ 48 Realidades (Válidas) calculadas com sucesso!")
+                st.success("✅ 12 Realidades calculadas com sucesso! Você está olhando para o gabarito final do bolão.")
                 
                 tab_mbappe, tab_kane, tab_outro = st.tabs(["⚽ Artilheiro: Mbappé", "⚽ Artilheiro: Kane", "⚽ Artilheiro: Outro (Zebra)"])
                 
