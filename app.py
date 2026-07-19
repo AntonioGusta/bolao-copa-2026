@@ -11,9 +11,23 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # ==============================================================================
-# CONFIGURAÇÃO DE ACESSO
+# CONFIGURAÇÃO DE ACESSO E FUNÇÕES GLOBAIS
 # ==============================================================================
 ID_PASTA_DRIVE = "1YXz96rcj7IgthzYHK6uyei_KrC5q9cqb"
+
+mapa_bandeiras = {
+    "brasil": "br", "frança": "fr", "espanha": "es", 
+    "inglaterra": "gb-eng", "argentina": "ar", 
+    "noruega": "no", "portugal": "pt", "holanda": "nl"
+}
+
+def obter_bandeira(nome_pais):
+    if not nome_pais or nome_pais == "-": return "🏳️"
+    pais_limpo = str(nome_pais).strip().lower()
+    codigo = mapa_bandeiras.get(pais_limpo)
+    if codigo: 
+        return f"<img src='https://flagcdn.com/w20/{codigo}.png' style='width:20px; height:auto; vertical-align:middle; margin-right:4px; border-radius:2px;'>"
+    return "🏳️"
 
 def obter_serviço_drive():
     creds = Credentials(
@@ -39,20 +53,17 @@ def carregar_palpites_em_cache(file_id):
     wb = openpyxl.load_workbook(bytes_io, data_only=True)
     palpites = {'fase1': {}, 'fase2': {}, 'premios': {'artilheiro': '-', 'top4': ['-', '-', '-', '-']}}
     
-    # Carrega a Fase de Grupos
     if 'FASE 1' in wb.sheetnames:
         ws1 = wb['FASE 1']
         for r in range(3, 75):
             palpites['fase1'][r] = (ws1[f'G{r}'].value, ws1[f'I{r}'].value)
             
-    # Carrega o Mata-Mata
     nome_aba_fase2 = 'FASE 2, 3, 4, SEMI & FINAL'
     if nome_aba_fase2 in wb.sheetnames:
         ws2 = wb[nome_aba_fase2]
         for r in range(3, 100):
             palpites['fase2'][r] = (ws2[f'E{r}'].value, ws2[f'G{r}'].value)
             
-    # Carrega Premiações e Campeões
     if 'Dados Pessoais' in wb.sheetnames:
         ws3 = wb['Dados Pessoais']
         artilheiro = ws3['D13'].value
@@ -96,7 +107,7 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
     
     html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
-    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Grupos</th><th style='padding: 8px; color:#94A3B8;'>Pré-Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Quartas</th><th style='padding: 8px; color:#94A3B8;'>Finais</th><th style='padding: 8px; font-size: 15px;'>Total</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
+    html += "<tr><th style='padding: 8px;'>Pos</th><th style='padding: 8px;'>Var</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Grupos</th><th style='padding: 8px; color:#94A3B8;'>Pré-Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Oitavas</th><th style='padding: 8px; color:#94A3B8;'>Quartas</th><th style='padding: 8px; color:#94A3B8;'>Finais</th><th style='padding: 8px; color:#38BDF8;'>Prêmios</th><th style='padding: 8px; font-size: 15px;'>Total</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
     html += "</thead><tbody>"
 
     for p in participantes:
@@ -114,6 +125,7 @@ def gerar_tabela_html(participantes, titulo, subtitulo, cor_destaque=None, posic
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_oitavas', 0)}</td>"
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_quartas', 0)}</td>"
         html += f"<td style='padding: 6px; color:#CBD5E1;'>{p.get('pts_finais', 0)}</td>"
+        html += f"<td style='padding: 6px; font-weight: bold; color:#38BDF8;'>+{p.get('pts_premios', 0)}</td>"
         html += f"<td style='padding: 6px; font-weight: bold; font-size: 15px; color:#F59E0B;'>{p['pontos']}</td>"
         
         html += f"<td style='padding: 6px; font-size: 12px; color:#64748B;'>{p.get('dif', '-')}</td>"
@@ -129,7 +141,7 @@ def gerar_tabela_simulacao_html(participantes):
     
     html += "<table style='width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; color: #F8FAFC; margin-top: 15px;'>"
     html += "<thead style='background-color: #111827; border-bottom: 2px solid #334155;'>"
-    html += "<tr><th style='padding: 8px;'>Pos</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Pts Atuais</th><th style='padding: 8px; color:#22C55E;'>Pts Ganhos (Premiação)</th><th style='padding: 8px; font-size: 15px;'>Total Projetado</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
+    html += "<tr><th style='padding: 8px;'>Pos</th><th style='text-align: left; padding: 8px;'>Nome</th><th style='padding: 8px; color:#94A3B8;'>Pts Atuais</th><th style='padding: 8px; color:#22C55E;'>Pts Ganhos (Simulação)</th><th style='padding: 8px; font-size: 15px;'>Total Projetado</th><th style='padding: 8px; color:#64748B;'>Dif</th></tr>"
     html += "</thead><tbody>"
 
     for p in participantes:
@@ -167,6 +179,7 @@ button[kind="primary"]:hover {
 
 if 'ranking_processado' not in st.session_state: st.session_state.ranking_processado = []
 if 'resumo_ontem' not in st.session_state: st.session_state.resumo_ontem = {}
+if 'premios_oficiais' not in st.session_state: st.session_state.premios_oficiais = {'artilheiro': '-', 'top4': ['-', '-', '-', '-']}
 
 st.title("🏆 Apuração do Bolão da Copa 2026 (THE)")
 st.write("Clique no botão abaixo para processar os palpites e atualizar o ranking em tempo real.")
@@ -231,11 +244,36 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                                 except: pass
                         datas_jogos_f2[r] = d_jogo
 
+            # LER PREMIAÇÕES OFICIAIS DO ARQUIVO DE CONTROLE
+            premios_oficiais = {'artilheiro': '-', 'top4': ['-', '-', '-', '-']}
+            if 'Dados Pessoais' in wb_leitura.sheetnames:
+                ws_premios_oficiais = wb_leitura['Dados Pessoais']
+                o_art = ws_premios_oficiais['D13'].value
+                o_t1 = ws_premios_oficiais['D17'].value
+                o_t2 = ws_premios_oficiais['D18'].value
+                o_t3 = ws_premios_oficiais['D19'].value
+                o_t4 = ws_premios_oficiais['D20'].value
+                premios_oficiais['artilheiro'] = str(o_art).strip() if o_art else "-"
+                premios_oficiais['top4'] = [
+                    str(o_t1).strip() if o_t1 else "-",
+                    str(o_t2).strip() if o_t2 else "-",
+                    str(o_t3).strip() if o_t3 else "-",
+                    str(o_t4).strip() if o_t4 else "-"
+                ]
+            st.session_state.premios_oficiais = premios_oficiais
+
             ws_tabela_leitura = wb_leitura['TABELA']
             lista_ranking = []
             lista_ontem = []
             lista_anteontem = []
             
+            def norm(s):
+                if not s: return ""
+                return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').strip().lower()
+
+            oficial_top4 = [norm(t) for t in premios_oficiais['top4']]
+            oficial_art = norm(premios_oficiais['artilheiro'])
+
             for row_tabela in range(2, 101):
                 celula_nome = ws_tabela_leitura[f'A{row_tabela}'].value
                 if celula_nome is None or str(celula_nome).strip() == "" or str(celula_nome).strip().lower() == "participante": continue
@@ -246,7 +284,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 if arquivo_palpite not in mapa_arquivos:
                     lista_ranking.append({
                         'nome': nome, 'pontos': 0, 'pts_grupos': 0, 'pts_pre_oitavas': 0, 
-                        'pts_oitavas': 0, 'pts_quartas': 0, 'pts_finais': 0,
+                        'pts_oitavas': 0, 'pts_quartas': 0, 'pts_finais': 0, 'pts_premios': 0,
                         'artilheiro': '-', 'top4': ['-', '-', '-', '-']
                     })
                     continue
@@ -259,9 +297,11 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 pts_oitavas = 0
                 pts_quartas = 0
                 pts_finais = 0
+                pts_premios = 0
                 pts_ont = 0
                 pts_ant = 0
                 
+                # --- JOGOS DA COPA ---
                 for r, (g_m_real, g_v_real) in resultados_reais_f1.items():
                     if g_m_real is None or g_v_real is None: continue
                     p_casa, p_fora = palpites['fase1'].get(r, (None, None))
@@ -292,8 +332,33 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     else:
                         pts_ont += pts
                         pts_ant += pts
-                        
-                pts_total_live = pts_grupos + pts_pre_oitavas + pts_oitavas + pts_quartas + pts_finais
+
+                # --- PONTUAÇÃO DE PREMIAÇÕES ---
+                p_top4 = [norm(t) for t in palpites.get('premios', {}).get('top4', ['-', '-', '-', '-'])]
+                for i in range(4):
+                    if p_top4[i] == '-' or p_top4[i] == "": continue
+                    if oficial_top4[i] != '-' and oficial_top4[i] != "":
+                        if p_top4[i] == oficial_top4[i]:
+                            pts_premios += 12
+                        elif p_top4[i] in oficial_top4:
+                            pts_premios += 8
+                            
+                p_art = norm(palpites.get('premios', {}).get('artilheiro', '-'))
+                acertou_artilheiro = False
+                
+                if oficial_art != '-' and oficial_art != "" and p_art != "-" and p_art != "":
+                    if oficial_art in p_art or p_art in oficial_art: acertou_artilheiro = True
+                    if oficial_art == "kylian mbappe" and "mbappe" in p_art: acertou_artilheiro = True
+                    if oficial_art == "harry kane" and "kane" in p_art: acertou_artilheiro = True
+                    if oficial_art == "mikel oyarzabal" and "oyarzabal" in p_art: acertou_artilheiro = True
+                    if oficial_art == "julian alvarez" and "alvarez" in p_art: acertou_artilheiro = True
+                    
+                if acertou_artilheiro: pts_premios += 15
+
+                # Soma premiações no montante do participante
+                pts_ont += pts_premios
+                pts_ant += pts_premios
+                pts_total_live = pts_grupos + pts_pre_oitavas + pts_oitavas + pts_quartas + pts_finais + pts_premios
                 
                 lista_ranking.append({
                     'nome': nome, 
@@ -303,6 +368,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                     'pts_oitavas': pts_oitavas,
                     'pts_quartas': pts_quartas,
                     'pts_finais': pts_finais,
+                    'pts_premios': pts_premios,
                     'artilheiro': palpites.get('premios', {}).get('artilheiro', '-'),
                     'top4': palpites.get('premios', {}).get('top4', ['-', '-', '-', '-'])
                 })
@@ -333,9 +399,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 
             m_subida = max(var_ontem_cards.values()) if var_ontem_cards else 0
             m_queda = min(var_ontem_cards.values()) if var_ontem_cards else 0
-            
-            h_sub = [n for n, v in var_ontem_cards.items() if v == m_subida] if m_subida > 0 else []
-            v_que = [n for n, v in var_ontem_cards.items() if v == m_queda] if m_queda < 0 else []
             
             st.session_state.resumo_ontem = {
                 "data_str": f"{ontem_date.day:02d}/{ontem_date.month:02d}",
@@ -371,7 +434,7 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
                 elif variacao < 0: participante['var_html'] = f"<span style='color: #EF4444;'>▼ {abs(variacao)}</span>"
                 else: participante['var_html'] = "<span style='color: #94A3B8;'>➖</span>"
 
-            # GRAVAR EXCEL TESTES
+            # GRAVAR EXCEL (NOME DA PLANILHA OFICIAL)
             bytes_controle.seek(0)
             wb_gravar = openpyxl.load_workbook(bytes_controle, data_only=False)
             if 'Dados Pessoais' in wb_gravar.sheetnames: wb_gravar.remove(wb_gravar['Dados Pessoais'])
@@ -392,12 +455,13 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             arquivo_saida_bytes.seek(0)
             wb_gravar.close()
             
-            nome_saida = 'BOLÃO DA COPA DO MUNDO 2026-TESTE.xlsx'
+            # --- ATENÇÃO: SUBSTITUA O NOME AQUI SE FOR ENVIAR PRO OFICIAL ---
+            nome_saida = 'BOLÃO DA COPA DO MUNDO 2026-TESTE.xlsx' 
             media_upload = MediaIoBaseUpload(arquivo_saida_bytes, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
             if nome_saida in mapa_arquivos: service.files().update(fileId=mapa_arquivos[nome_saida], media_body=media_upload).execute()
             else: service.files().create(body={'name': nome_saida, 'parents': [ID_PASTA_DRIVE]}, media_body=media_upload).execute()
             
-            st.markdown("<div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px;'><strong>Tabela atualizada com sucesso no ambiente de testes!</strong></div>", unsafe_allow_html=True)
+            st.markdown("<div style='background: #064E3B; color: #D1FAE5; border-left: 4px solid #10B981; padding: 12px; border-radius: 4px; margin-bottom: 20px;'><strong>Tabela atualizada com sucesso!</strong></div>", unsafe_allow_html=True)
             
         except Exception as e: st.error(f"Ocorreu um erro no processamento: {e}")
 
@@ -418,6 +482,27 @@ if aba_selecionada == "🏆 Classificação e Resenha":
     if not st.session_state.ranking_processado: 
         st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
     else:
+        # -------------------------------------------------------------
+        # BLOCO NOVO: EXIBIR O GABARITO OFICIAL DAS PREMIAÇÕES
+        # -------------------------------------------------------------
+        pref = st.session_state.get('premios_oficiais', {'artilheiro': '-', 'top4': ['-', '-', '-', '-']})
+        st.markdown("### 🏅 Gabarito Oficial: Premiações")
+        
+        c_p1, c_p2, c_p3, c_p4, c_p5 = st.columns(5)
+        with c_p1:
+            st.markdown(f"<div style='text-align:center; background:#1E293B; padding:10px; border-radius:8px; border:1px solid #334155;'><strong>🥇 1º Lugar</strong><br><br><span style='font-size:16px;'>{obter_bandeira(pref['top4'][0])} {pref['top4'][0]}</span></div>", unsafe_allow_html=True)
+        with c_p2:
+            st.markdown(f"<div style='text-align:center; background:#1E293B; padding:10px; border-radius:8px; border:1px solid #334155;'><strong>🥈 2º Lugar</strong><br><br><span style='font-size:16px;'>{obter_bandeira(pref['top4'][1])} {pref['top4'][1]}</span></div>", unsafe_allow_html=True)
+        with c_p3:
+            st.markdown(f"<div style='text-align:center; background:#1E293B; padding:10px; border-radius:8px; border:1px solid #334155;'><strong>🥉 3º Lugar</strong><br><br><span style='font-size:16px;'>{obter_bandeira(pref['top4'][2])} {pref['top4'][2]}</span></div>", unsafe_allow_html=True)
+        with c_p4:
+            st.markdown(f"<div style='text-align:center; background:#1E293B; padding:10px; border-radius:8px; border:1px solid #334155;'><strong>🏅 4º Lugar</strong><br><br><span style='font-size:16px;'>{obter_bandeira(pref['top4'][3])} {pref['top4'][3]}</span></div>", unsafe_allow_html=True)
+        with c_p5:
+            st.markdown(f"<div style='text-align:center; background:#1E293B; padding:10px; border-radius:8px; border:1px solid #334155;'><strong>👟 Artilheiro</strong><br><br><span style='font-size:16px; color:#F59E0B; font-weight:bold;'>⚽ {pref['artilheiro']}</span></div>", unsafe_allow_html=True)
+            
+        st.write("---")
+        # -------------------------------------------------------------
+
         dados = st.session_state.ranking_processado
         resumo = st.session_state.get('resumo_ontem', {})
         N = len(dados)
@@ -751,13 +836,6 @@ elif aba_selecionada == "🔮 Palpites Finais e Premiações":
     if not st.session_state.ranking_processado: st.info("👆 Clique no botão azul lá em cima para buscar os dados.")
     else:
         dados = sorted(st.session_state.ranking_processado, key=lambda x: x['nome'].lower())
-        mapa_bandeiras = {"brasil": "br", "frança": "fr", "espanha": "es", "inglaterra": "gb-eng", "argentina": "ar", "noruega": "no", "portugal": "pt", "holanda": "nl"}
-        def obter_bandeira(nome_pais):
-            if not nome_pais or nome_pais == "-": return "🏳️"
-            pais_limpo = str(nome_pais).strip().lower()
-            codigo = mapa_bandeiras.get(pais_limpo)
-            if codigo: return f"<img src='https://flagcdn.com/w20/{codigo}.png' style='width:20px; height:auto; vertical-align:middle; margin-right:4px; border-radius:2px;'>"
-            return "🏳️"
         
         cols = st.columns(4)
         for idx, p in enumerate(dados):
@@ -790,7 +868,6 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
     if not st.session_state.ranking_processado:
         st.warning("👆 Clique no botão azul lá em cima para buscar os dados oficiais antes de simular.")
     else:
-        # Dicionário e função de apoio para criar os banners HTML dinâmicos com bandeiras
         mapa_bandeiras_sim = {"França": "fr", "Espanha": "es", "Argentina": "ar", "Inglaterra": "gb-eng"}
         def criar_banner_confronto(time1, time2):
             cod1 = mapa_bandeiras_sim.get(time1, "")
@@ -840,12 +917,10 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
         st.write("")
         if st.button("🚀 Calcular Tabela Simulada", type="primary", use_container_width=True):
             
-            # Função para normalizar strings (Tira acento, maiúscula, espaço)
             def norm(s):
                 if not s: return ""
                 return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').strip().lower()
 
-            # Como usamos apenas texto puro nos inputs, passamos as variáveis diretas sem "remover_bandeira"
             sim_top4 = [norm(campeao), norm(vice), norm(terceiro), norm(quarto)]
             s_art = norm(artilheiro_sim)
             
@@ -853,6 +928,10 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
             for p in st.session_state.ranking_processado:
                 pts_atuais = p['pontos']
                 pts_ganhos = 0
+                
+                # Desconta os pontos que a pessoa talvez JÁ TENHA GANHADO na pontuação oficial das premiações
+                # Isso impede que o simulador "dobre" os pontos caso o prêmio oficial já tenha sido preenchido
+                pts_atuais -= p.get('pts_premios', 0)
                 
                 # --- Lógica do Top 4 ---
                 p_top4 = [norm(t) for t in p.get('top4', ['-', '-', '-', '-'])]
@@ -884,7 +963,6 @@ elif aba_selecionada == "🎮 Simulador da Reta Final":
                 sim_p['pontos_simulados'] = novo_total
                 lista_simulada.append(sim_p)
                 
-            # Ranqueando o Futuro
             lista_simulada.sort(key=lambda x: (-x['pontos_simulados'], x['nome'].lower()))
             
             posicao_atual = 1
