@@ -400,6 +400,11 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             m_subida = max(var_ontem_cards.values()) if var_ontem_cards else 0
             m_queda = min(var_ontem_cards.values()) if var_ontem_cards else 0
             
+            # --- AS LINHAS CORRIGIDAS ESTÃO AQUI 👇 ---
+            h_sub = [n for n, v in var_ontem_cards.items() if v == m_subida] if m_subida > 0 else []
+            v_que = [n for n, v in var_ontem_cards.items() if v == m_queda] if m_queda < 0 else []
+            # ------------------------------------------
+
             st.session_state.resumo_ontem = {
                 "data_str": f"{ontem_date.day:02d}/{ontem_date.month:02d}",
                 "maior_subida": {"nomes": h_sub, "valor": m_subida},
@@ -455,7 +460,6 @@ if st.button("🚀 Atualizar Classificação", type="primary"):
             arquivo_saida_bytes.seek(0)
             wb_gravar.close()
             
-            # --- ATENÇÃO: SUBSTITUA O NOME AQUI SE FOR ENVIAR PRO OFICIAL ---
             nome_saida = 'BOLÃO DA COPA DO MUNDO 2026-TESTE.xlsx' 
             media_upload = MediaIoBaseUpload(arquivo_saida_bytes, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
             if nome_saida in mapa_arquivos: service.files().update(fileId=mapa_arquivos[nome_saida], media_body=media_upload).execute()
